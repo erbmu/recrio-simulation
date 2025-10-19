@@ -1,112 +1,65 @@
+// supabase/functions/generate-simulation/index.ts
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+function extractJsonFrom(text: string) {
+  const fence = text.match(/```json\s*([\s\S]*?)\s*```/i) || text.match(/```\s*([\s\S]*?)\s*```/i);
+  return (fence ? fence[1] : text).trim();
+}
+
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
     const { jobDescription, companyDescription } = await req.json();
-    
     if (!jobDescription || !companyDescription) {
-      return new Response(
-        JSON.stringify({ error: 'Job description and company description are required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: "Job description and company description are required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY is not configured');
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) {
+      return new Response(JSON.stringify({ error: "GEMINI_API_KEY not configured" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    console.log('Generating simulation for:', { jobDescription, companyDescription });
-
-    const systemPrompt = `You are an AI that generates realistic workplace simulation scenarios for hiring assessments. 
-Your task is to create a dynamic, engaging simulation based on the provided job description and company description.
-
+    const systemPrompt =
+      `You are an AI that generates realistic workplace simulation scenarios for hiring assessments.
 The simulation should:
-1. Create 3 channels (e.g., Engineering Team, Product Development, Data & Analytics)
-2. Each channel should have exactly 6 questions total (including follow-ups). For example: 3 main questions with 2 follow-ups each = 6 total
-3. Include realistic team member dialogue that sets context BEFORE each main question
-4. Create distinct AI personas (e.g., Founder, Lead Engineer, Product Manager, Designer)
-5. Make the scenario feel authentic to a startup environment
-6. Include stimulus materials (code snippets, documents, data) for 30-40% of questions where relevant
-7. Stimulus materials should be realistic and role-appropriate (e.g., code for engineers, designs for designers, data for analysts)
-8. Each main question should have 2-3 context messages from different team members BEFORE the question is asked, creating realistic workplace atmosphere
-
-CRITICAL RULE ABOUT STIMULUS MATERIALS:
-- If your question text references ANY external material (e.g., "based on this JSON file", "looking at this table", "review this code", "analyze this data"), you MUST include that material in the stimulus field
-- NEVER ask candidates to analyze, review, or reference materials that you don't provide
-- If the question doesn't need to reference specific materials, don't mention them in the question text
-
-Examples:
-❌ BAD: "Based on this JSON file, what would you recommend?" (no stimulus provided)
-✅ GOOD: "Based on this JSON file, what would you recommend?" (stimulus field contains the actual JSON)
-✅ GOOD: "What approach would you take to improve our API performance?" (no stimulus needed, general question)
-
-Return a JSON structure with this exact format:
+1) 3 channels total; 
+2) Each channel has exactly 6 questions total (e.g., 3 main + 2 follow-ups each);
+3) Include realistic team dialogue BEFORE each main question (2–3 short messages);
+4) Distinct AI personas (Founder, Lead Engineer, PM, Designer, etc.);
+5) Startup-feel authenticity;
+6) 30–40% of questions include realistic stimulus (code/document/data) when referenced.
+RULE: If any question text references external material, you MUST include that exact material in the "stimulus" object.
+Return ONLY a JSON object with this shape:
 {
-  "agents": [
-    {
-      "name": "Agent Name",
-      "role": "Their Role",
-      "personality": "Brief personality description"
-    }
-  ],
-  "channels": [
-    {
-      "id": "channel-id",
-      "name": "channel-name",
-      "description": "What this channel is about"
-    }
-  ],
-  "questions": [
-    {
-      "id": "q1",
-      "channel": "channel-id",
-      "mainQuestion": "The primary question",
-      "stimulus": {
-        "type": "code|document|data",
-        "title": "Brief title for the stimulus",
-        "content": "The actual code snippet, document text, or data"
-      },
-      "context": [
-        {
-          "agent": "Agent Name",
-          "message": "Context setting message from team member 1"
-        },
-        {
-          "agent": "Another Agent Name",
-          "message": "Additional context or realistic workplace banter"
-        }
-      ],
-      "followUps": [
-        {
-          "id": "q1-f1",
-          "agent": "Agent Name",
-          "question": "Follow up question 1"
-        },
-        {
-          "id": "q1-f2",
-          "agent": "Agent Name",
-          "question": "Follow up question 2"
-        }
-      ]
-    }
-  ]
-}
+  "agents": [{ "name": "...", "role": "...", "personality": "..." }],
+  "channels": [{ "id": "channel-id", "name": "...", "description": "..." }],
+  "questions": [{
+    "id": "q1",
+    "channel": "channel-id",
+    "mainQuestion": "...",
+    "stimulus": { "type": "code|document|data", "title": "...", "content": "..." } | null,
+    "context": [{ "agent": "Name", "message": "..." }, ...],
+    "followUps": [{ "id": "q1-f1", "agent": "Name", "question": "..." }, { "id": "q1-f2", ... }]
+  }]
+}`;
 
-Note: The "stimulus" field should be included whenever the question references specific materials to analyze. If you mention it in the question, you must provide it.
-The "context" array should have 2-3 messages from different team members that create realistic workplace atmosphere BEFORE each main question is asked.`;
-
-    const userPrompt = `Create a hiring simulation scenario for the following:
+    const userPrompt =
+`Create a hiring simulation for:
 
 Job Description:
 ${jobDescription}
@@ -114,77 +67,65 @@ ${jobDescription}
 Company Description:
 ${companyDescription}
 
-Generate a realistic simulation with 3 channels, each containing exactly 6 questions total (including follow-ups). For example: 3 main questions with 2 follow-ups each = 6 total questions per channel.
+Remember: 3 channels; exactly 6 questions per channel (including follow-ups); provide stimulus wherever referenced; return ONLY JSON (no prose).`;
 
-Include stimulus materials (code snippets, documents, data to analyze) for 30-40% of questions where it would be realistic and valuable for assessment. Make these materials authentic and relevant to the role.
+    // Gemini generateContent call
+    const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+      + `?key=${encodeURIComponent(GEMINI_API_KEY)}`;
 
-CRITICAL: If ANY question text references external material ("this JSON", "this table", "this code", "this document", etc.), you MUST include that exact material in the stimulus field. Never ask candidates to analyze materials you don't provide.
+    const payload = {
+      systemInstruction: { role: "system", parts: [{ text: systemPrompt }] },
+      contents: [
+        { role: "user", parts: [{ text: userPrompt }] }
+      ],
+      generationConfig: {
+        temperature: 0.8
+      }
+    };
 
-IMPORTANT: For each main question, include 2-3 context messages from different team members BEFORE the question is asked. These should feel like natural workplace dialogue that sets up the situation, provides background, or adds realistic atmosphere - just like how colleagues chat before diving into a specific question or problem.`;
-
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        temperature: 0.8,
-      }),
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('AI Gateway error:', response.status, errorText);
-      return new Response(
-        JSON.stringify({ error: 'Failed to generate simulation' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (!resp.ok) {
+      const t = await resp.text();
+      console.error("Gemini error:", resp.status, t);
+      return new Response(JSON.stringify({ error: "Failed to generate simulation" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    const data = await response.json();
-    const generatedText = data.choices[0].message.content;
-    
-    // Extract JSON from the response (handle markdown code blocks)
+    const data = await resp.json();
+    const text =
+      data?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text || "").join("") || "";
+
     let scenarioJson;
     try {
-      const jsonMatch = generatedText.match(/```json\n([\s\S]*?)\n```/) || 
-                       generatedText.match(/```\n([\s\S]*?)\n```/);
-      let jsonText = jsonMatch ? jsonMatch[1] : generatedText;
-      
-      // Clean up common JSON issues from AI responses
-      // Replace unescaped ampersands in string values
-      jsonText = jsonText.replace(/": "([^"]*?)&([^"]*?)"/g, (_match: string, before: string, after: string) => {
-        return `": "${before}\\u0026${after}"`;
-      });
-      
+      const jsonText = extractJsonFrom(text)
+        // safe cleanup for accidental ampersands in JSON strings
+        .replace(/": "([^"]*?)&([^"]*?)"/g, (_m, a, b) => `": "${a}\\u0026${b}"`);
       scenarioJson = JSON.parse(jsonText);
     } catch (e) {
-      console.error('Failed to parse JSON:', e, generatedText.substring(0, 1000));
-      return new Response(
-        JSON.stringify({ error: 'Failed to parse generated scenario. Please try again.' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      console.error("JSON parse failed:", e, text.slice(0, 800));
+      return new Response(JSON.stringify({ error: "Failed to parse generated scenario. Please try again." }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    console.log('Successfully generated simulation');
-    
-    return new Response(
-      JSON.stringify({ scenario: scenarioJson }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ scenario: scenarioJson }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
 
-  } catch (error) {
-    console.error('Error in generate-simulation:', error);
-    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-    return new Response(
-      JSON.stringify({ error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    console.error("generate-simulation error:", msg);
+    return new Response(JSON.stringify({ error: msg }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });
