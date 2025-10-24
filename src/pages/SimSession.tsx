@@ -17,6 +17,8 @@ interface Candidate {
 interface Application {
   id?: string | number;
   candidate?: Candidate;
+  candidate_name?: string;
+  candidate_email?: string;
 }
 
 interface Job {
@@ -163,8 +165,22 @@ export default function SimSession() {
           : `verify/${encodeURIComponent(payload ?? "")}`;
 
         const response = await fetch(`${API}/api/sim/public/${path}`);
-        const isJson = response.headers.get("content-type")?.includes("application/json");
-        const body = isJson ? ((await response.json()) as SessionResponse) : undefined;
+        const contentType = response.headers.get("content-type") ?? "";
+        let body: SessionResponse | null = null;
+        let rawText: string | null = null;
+
+        if (contentType.includes("application/json")) {
+          body = (await response.json()) as SessionResponse;
+        } else {
+          rawText = await response.text();
+          if (rawText) {
+            try {
+              body = JSON.parse(rawText) as SessionResponse;
+            } catch (parseErr) {
+              console.warn("Unexpected non-JSON response:", parseErr, rawText);
+            }
+          }
+        }
 
         const used =
           response.status === 403 ||
@@ -173,14 +189,24 @@ export default function SimSession() {
 
         if (!response.ok || used) {
           if (!isMounted) return;
-          setError(used ? USED_LINK_MESSAGE : body?.error || `Failed to load simulation (${response.status})`);
+          const msg =
+            used
+              ? USED_LINK_MESSAGE
+              : body?.error ||
+                rawText ||
+                `Failed to load simulation (${response.status})`;
+          setError(msg);
           setLoading(false);
           return;
         }
 
         if (!body) {
           if (!isMounted) return;
-          setError("Received an unexpected response from the server.");
+          setError(
+            rawText
+              ? `Received an unexpected response from the server: ${rawText.slice(0, 160)}`
+              : "Received an unexpected response from the server.",
+          );
           setLoading(false);
           return;
         }
@@ -257,7 +283,10 @@ export default function SimSession() {
   }
 
   const { job, org, application } = session;
-  const candidate = application?.candidate;
+  const candidateName =
+    application?.candidate?.name ?? application?.candidate_name ?? undefined;
+  const candidateEmail =
+    application?.candidate?.email ?? application?.candidate_email ?? undefined;
 
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
@@ -284,11 +313,11 @@ export default function SimSession() {
             </p>
           )}
 
-          {(candidate?.name || candidate?.email) && (
+          {(candidateName || candidateEmail) && (
             <div className="mt-4 rounded-xl border border-border bg-white px-4 py-3 text-sm text-zinc-700">
               <div className="font-medium text-zinc-900">Candidate</div>
-              {candidate?.name && <div className="mt-1">Name: {candidate.name}</div>}
-              {candidate?.email && <div className="mt-1">Email: {candidate.email}</div>}
+              {candidateName && <div className="mt-1">Name: {candidateName}</div>}
+              {candidateEmail && <div className="mt-1">Email: {candidateEmail}</div>}
             </div>
           )}
         </div>
