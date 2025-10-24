@@ -164,7 +164,11 @@ export default function SimSession() {
           ? `resolve/${encodeURIComponent(token)}`
           : `verify/${encodeURIComponent(payload ?? "")}`;
 
-        const response = await fetch(`${API}/api/sim/public/${path}`);
+        const response = await fetch(`${API}/api/sim/public/${path}`, {
+          headers: {
+            Accept: "application/json",
+          },
+        });
         const contentType = response.headers.get("content-type") ?? "";
         let body: SessionResponse | null = null;
         let rawText: string | null = null;
