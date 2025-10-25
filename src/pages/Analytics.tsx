@@ -47,6 +47,12 @@ const Analytics = () => {
       if (simError) throw simError;
       setSimulation(simData);
 
+      const storedReport = (simData.analysis_report || null) as AnalyticsScores | null;
+      if (storedReport) {
+        setScores(storedReport);
+        return;
+      }
+
       // Fetch responses
       const { data: responses, error: responsesError } = await supabase
         .from("simulation_responses")
@@ -69,6 +75,11 @@ const Analytics = () => {
 
       if (analyticsError) throw analyticsError;
       setScores(analyticsData.scores);
+      setSimulation({
+        ...simData,
+        analysis_report: analyticsData.scores,
+        analysis_generated_at: new Date().toISOString(),
+      });
     } catch (error: any) {
       console.error("Error fetching analytics:", error);
       toast.error("Failed to load analytics");

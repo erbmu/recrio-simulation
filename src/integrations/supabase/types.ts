@@ -83,6 +83,8 @@ export type Database = {
       }
       simulations: {
         Row: {
+          analysis_generated_at: string | null
+          analysis_report: Json | null
           company_description: string
           completed_at: string | null
           created_at: string | null
@@ -94,6 +96,8 @@ export type Database = {
           violations_count: number
         }
         Insert: {
+          analysis_generated_at?: string | null
+          analysis_report?: Json | null
           company_description: string
           completed_at?: string | null
           created_at?: string | null
@@ -105,6 +109,8 @@ export type Database = {
           violations_count?: number
         }
         Update: {
+          analysis_generated_at?: string | null
+          analysis_report?: Json | null
           company_description?: string
           completed_at?: string | null
           created_at?: string | null

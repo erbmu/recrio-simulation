@@ -1,9 +1,20 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
+const supabaseAdmin =
+  SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+        auth: { persistSession: false },
+      })
+    : null;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -109,6 +120,22 @@ Provide scores (0-100) for each dimension with STRICT evaluation. Most candidate
     const data = await response.json();
     const toolCall = data.choices[0].message.tool_calls[0];
     const scores = JSON.parse(toolCall.function.arguments);
+
+    if (supabaseAdmin && simulation?.id) {
+      const { error: updateError } = await supabaseAdmin
+        .from("simulations")
+        .update({
+          analysis_report: scores,
+          analysis_generated_at: new Date().toISOString(),
+        })
+        .eq("id", simulation.id);
+
+      if (updateError) {
+        console.error("Failed to persist analysis report:", updateError);
+      }
+    } else if (!supabaseAdmin) {
+      console.warn("Supabase admin client not configured; skipping report persistence");
+    }
 
     return new Response(
       JSON.stringify({ scores }),
