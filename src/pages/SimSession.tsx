@@ -4,6 +4,8 @@ import { useParams } from "react-router-dom";
 import { Sidebar } from "@/components/simulation/Sidebar";
 import { ChatArea, Message } from "@/components/simulation/ChatArea";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { Loader2 } from "lucide-react";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
 const USED_LINK_MESSAGE =
@@ -24,6 +26,7 @@ interface Application {
 interface Job {
   title?: string;
   description?: string;
+  qualifications?: string;
 }
 
 interface Org {
@@ -45,56 +48,39 @@ interface Channel {
   locked?: boolean;
 }
 
-const DEFAULT_CHANNELS: Channel[] = [
-  { id: "technical", name: "technical", unread: 21 },
-  { id: "cross-functional", name: "cross-functional", unread: 0 },
-  { id: "exec-debrief", name: "exec-debrief", locked: true },
-];
+interface ScenarioAgent {
+  name: string;
+  role: string;
+  personality: string;
+}
 
-const DEFAULT_MESSAGES: Message[] = [
-  {
-    id: "intro-1",
-    role: "system",
-    content:
-      "As a Software Engineer Intern, you need to enhance the reliability of transactions and improve dashboard performance.",
-    timestamp: "9:00 AM",
-  },
-  {
-    id: "intro-2",
-    role: "agent",
-    author: "Ari (Founder/PM)",
-    content: "We need to ensure our transaction system is rock solid.",
-    timestamp: "9:01 AM",
-  },
-  {
-    id: "intro-3",
-    role: "agent",
-    author: "Baa (Lead Engineer)",
-    content: "Remember, we have strict uptime requirements and data compliance.",
-    timestamp: "9:02 AM",
-  },
-  {
-    id: "intro-4",
-    role: "agent",
-    author: "Baa (Lead Engineer)",
-    content: "How would you approach optimizing SQL queries for transaction reliability?",
-    timestamp: "9:02 AM",
-  },
-  {
-    id: "intro-5",
-    role: "candidate",
-    content:
-      "I would start by analyzing query execution plans and adding appropriate indexes...",
-    timestamp: "9:05 AM",
-  },
-  {
-    id: "intro-6",
-    role: "agent",
-    author: "Founder",
-    content: "What specific metrics would you track?",
-    timestamp: "9:06 AM",
-  },
-];
+interface ScenarioChannel {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+interface Question {
+  id: string;
+  channel: string;
+  mainQuestion: string;
+  context: Array<{ agent: string; message: string }>;
+  interstitialDialogue?: Array<{ agent: string; message: string; delayAfterResponse?: number }>;
+  followUps: Array<{ id: string; agent: string; question: string }>;
+  stimulus?: {
+    type: "code" | "document" | "data";
+    title: string;
+    content: string;
+  };
+}
+
+interface Scenario {
+  agents?: ScenarioAgent[];
+  channels?: ScenarioChannel[];
+  questions: Question[];
+}
+
+type ChannelProgress = Record<string, { questionIndex: number; followUpIndex: number; completed: boolean }>;
 
 export default function SimSession() {
   const { token, payload } = useParams<{ token?: string; payload?: string }>();
@@ -103,44 +89,17 @@ export default function SimSession() {
   const [session, setSession] = useState<SessionResponse | null>(null);
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(true);
+  const [scenarioLoading, setScenarioLoading] = useState(false);
+  const [scenario, setScenario] = useState<Scenario | null>(null);
+  const [simulationId, setSimulationId] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
 
-  const [channels] = useState<Channel[]>(DEFAULT_CHANNELS);
-  const [activeChannel, setActiveChannel] = useState<string>(DEFAULT_CHANNELS[0].id);
-  const [messages, setMessages] = useState<Message[]>(DEFAULT_MESSAGES);
+  const [channels, setChannels] = useState<Channel[]>([]);
+  const [activeChannel, setActiveChannel] = useState<string>("");
+  const [channelMessages, setChannelMessages] = useState<Record<string, Message[]>>({});
+  const [channelProgress, setChannelProgress] = useState<ChannelProgress>({});
   const [violations, setViolations] = useState<number>(0);
   const [timeRemaining, setTimeRemaining] = useState<string>("30:00");
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setTimeRemaining((prev) => {
-        const [minutes, seconds] = prev.split(":").map(Number);
-        const totalSeconds = minutes * 60 + seconds - 1;
-
-        if (totalSeconds <= 0) {
-          clearInterval(timer);
-          return "0:00";
-        }
-
-        const newMinutes = Math.floor(totalSeconds / 60);
-        const newSeconds = totalSeconds % 60;
-        return `${newMinutes}:${newSeconds.toString().padStart(2, "0")}`;
-      });
-    }, 1000);
-
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        handleViolation("tab_switch");
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -233,13 +192,188 @@ export default function SimSession() {
     };
   }, [token, payload]);
 
-  const sessionId = useMemo(
-    () => String(session?.application?.id ?? token ?? payload ?? "public"),
-    [session?.application?.id, token, payload],
+  const scenarioKey = useMemo(
+    () => simulationId ?? String(session?.application?.id ?? token ?? payload ?? "public"),
+    [simulationId, session?.application?.id, token, payload],
   );
 
-  const handleViolation = (type: string) => {
+  const loadChannelQuestions = (channelId: string, questions: Question[]) => {
+    const channelQuestions = questions.filter((q) => q.channel === channelId);
+    if (channelQuestions.length === 0) return;
+
+    const firstQuestion = channelQuestions[0];
+    const questionMessages: Message[] = [];
+
+    firstQuestion.context.forEach((ctx, idx) => {
+      questionMessages.push({
+        id: `${channelId}-context-${idx}`,
+        role: "agent",
+        author: ctx.agent,
+        content: ctx.message,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      });
+    });
+
+    questionMessages.push({
+      id: `${channelId}-${firstQuestion.id}`,
+      role: "agent",
+      author: firstQuestion.context[0]?.agent || "Team",
+      content: firstQuestion.mainQuestion,
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      stimulus: firstQuestion.stimulus,
+    });
+
+    setChannelMessages((prev) => ({ ...prev, [channelId]: questionMessages }));
+  };
+
+  const initializeScenario = async (sessionData: SessionResponse) => {
+    if (!sessionData?.job) {
+      setError("Simulation metadata is incomplete. Please contact support.");
+      return;
+    }
+
+    setScenarioLoading(true);
+    try {
+      const { data: functionData, error: functionError } = await supabase.functions.invoke(
+        "generate-simulation",
+        {
+          body: {
+            jobDescription: sessionData.job?.description ?? "",
+            companyDescription: sessionData.org?.company_description ?? "",
+          },
+        },
+      );
+
+      if (functionError) throw functionError;
+
+      const rawScenario = functionData?.scenario ?? functionData;
+      if (
+        !rawScenario ||
+        !Array.isArray((rawScenario as { questions?: unknown }).questions) ||
+        (rawScenario as { questions?: unknown[] }).questions?.length === 0
+      ) {
+        throw new Error("Simulation generator returned an empty scenario.");
+      }
+
+      const scenarioPayload = rawScenario as Scenario;
+
+      const { data: insertedSimulation, error: insertError } = await supabase
+        .from("simulations")
+        .insert({
+          job_description: sessionData.job?.description ?? "",
+          company_description: sessionData.org?.company_description ?? "",
+          generated_scenario: scenarioPayload,
+          status: "in_progress",
+          user_id: null,
+        })
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+      if (!insertedSimulation?.id) {
+        throw new Error("Failed to create simulation session.");
+      }
+
+      setSimulationId(insertedSimulation.id);
+      setScenario(scenarioPayload);
+
+      const channelData: Channel[] = (scenarioPayload.channels ?? []).map((ch) => ({
+        id: ch.id,
+        name: ch.name,
+        unread: 0,
+      }));
+
+      const initialProgress: ChannelProgress = {};
+      const initialMessages: Record<string, Message[]> = {};
+      channelData.forEach((ch) => {
+        initialProgress[ch.id] = { questionIndex: 0, followUpIndex: 0, completed: false };
+        initialMessages[ch.id] = [];
+      });
+
+      setChannels(channelData);
+      setChannelProgress(initialProgress);
+      setChannelMessages(initialMessages);
+
+      if (channelData.length > 0) {
+        setActiveChannel(channelData[0].id);
+        loadChannelQuestions(channelData[0].id, scenarioPayload.questions);
+      }
+    } catch (err) {
+      console.error("[SimSession] scenario generation failed:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to generate the simulation scenario. Please contact your recruiter.",
+      );
+    } finally {
+      setScenarioLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!session || scenario || scenarioLoading || error) return;
+    void initializeScenario(session);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, scenario, scenarioLoading, error]);
+
+  useEffect(() => {
+    if (!scenario || submitted) return;
+
+    const timer = setInterval(() => {
+      setTimeRemaining((prev) => {
+        const [minutes, seconds] = prev.split(":").map(Number);
+        const totalSeconds = minutes * 60 + seconds - 1;
+
+        if (totalSeconds <= 0) {
+          clearInterval(timer);
+          void handleAutoSubmit();
+          return "0:00";
+        }
+
+        const newMinutes = Math.floor(totalSeconds / 60);
+        const newSeconds = totalSeconds % 60;
+        return `${newMinutes}:${newSeconds.toString().padStart(2, "0")}`;
+      });
+    }, 1000);
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        void handleViolation("tab_switch");
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scenario, submitted]);
+
+  useEffect(() => {
+    if (!activeChannel || !scenario || (channelMessages[activeChannel]?.length ?? 0) > 0) {
+      return;
+    }
+
+    loadChannelQuestions(activeChannel, scenario.questions);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeChannel, scenario]);
+
+  const handleViolation = async (type: string) => {
     setViolations((prev) => prev + 1);
+
+    if (simulationId) {
+      try {
+        await supabase.from("simulation_violations").insert({
+          simulation_id: simulationId,
+          violation_type: type,
+        });
+      } catch (err) {
+        console.error("Error logging violation:", err);
+      }
+    }
+
     toast({
       title: "Violation detected",
       description:
@@ -250,21 +384,180 @@ export default function SimSession() {
     });
   };
 
-  const handleSendResponse = (response: string) => {
+  const handleSendResponse = async (rawResponse: string) => {
+    if (!scenario || !activeChannel || submitted) return;
+
+    const progress = channelProgress[activeChannel];
+    if (!progress) return;
+
+    const response = rawResponse.trim();
+    if (!response) return;
+
     const newMessage: Message = {
       id: Date.now().toString(),
       role: "candidate",
       content: response,
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     };
-    setMessages((prev) => [...prev, newMessage]);
+
+    setChannelMessages((prev) => ({
+      ...prev,
+      [activeChannel]: [...(prev[activeChannel] || []), newMessage],
+    }));
+
+    const channelQuestions = scenario.questions.filter((q: Question) => q.channel === activeChannel);
+    const currentQuestion = channelQuestions[progress.questionIndex];
+    if (!currentQuestion) return;
+
+    const questionId =
+      progress.followUpIndex === 0
+        ? currentQuestion.id
+        : currentQuestion.followUps?.[progress.followUpIndex - 1]?.id;
+
+    if (simulationId) {
+      try {
+        await supabase.from("simulation_responses").insert({
+          simulation_id: simulationId,
+          question_id: questionId,
+          response,
+        });
+      } catch (err) {
+        console.error("Error saving response:", err);
+        toast({
+          title: "Error",
+          description: "Failed to save response. Please continue and we'll retry.",
+          variant: "destructive",
+        });
+      }
+    }
+
+    if (currentQuestion.followUps && progress.followUpIndex < currentQuestion.followUps.length) {
+      const followUp = currentQuestion.followUps[progress.followUpIndex];
+      setTimeout(() => {
+        const followUpMessage: Message = {
+          id: `${activeChannel}-${followUp.id}`,
+          role: "agent",
+          author: followUp.agent,
+          content: followUp.question,
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        };
+
+        setChannelMessages((prev) => ({
+          ...prev,
+          [activeChannel]: [...(prev[activeChannel] || []), followUpMessage],
+        }));
+
+        setChannelProgress((prev) => ({
+          ...prev,
+          [activeChannel]: {
+            ...prev[activeChannel],
+            followUpIndex: prev[activeChannel].followUpIndex + 1,
+          },
+        }));
+      }, 1000);
+      return;
+    }
+
+    if (progress.questionIndex < channelQuestions.length - 1) {
+      setTimeout(() => {
+        const nextQuestion = channelQuestions[progress.questionIndex + 1];
+        let cumulativeDelay = 0;
+
+        nextQuestion.context.forEach((ctx, idx) => {
+          setTimeout(() => {
+            const contextMessage: Message = {
+              id: `${activeChannel}-context-${progress.questionIndex + 1}-${idx}`,
+              role: "agent",
+              author: ctx.agent,
+              content: ctx.message,
+              timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            };
+
+            setChannelMessages((prev) => ({
+              ...prev,
+              [activeChannel]: [...(prev[activeChannel] || []), contextMessage],
+            }));
+          }, cumulativeDelay);
+
+          cumulativeDelay += 1500;
+        });
+
+        setTimeout(() => {
+          const questionMessage: Message = {
+            id: `${activeChannel}-${nextQuestion.id}`,
+            role: "agent",
+            author: nextQuestion.context[0]?.agent || "Team",
+            content: nextQuestion.mainQuestion,
+            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            stimulus: nextQuestion.stimulus,
+          };
+
+          setChannelMessages((prev) => ({
+            ...prev,
+            [activeChannel]: [...(prev[activeChannel] || []), questionMessage],
+          }));
+
+          setChannelProgress((prev) => ({
+            ...prev,
+            [activeChannel]: {
+              questionIndex: prev[activeChannel].questionIndex + 1,
+              followUpIndex: 0,
+              completed: false,
+            },
+          }));
+        }, cumulativeDelay + 1000);
+      }, 1000);
+      return;
+    }
+
+    setTimeout(() => {
+      const completionMessage: Message = {
+        id: `${activeChannel}-completion`,
+        role: "agent",
+        author: "System",
+        content: "🎉 Escalation resolved! Great work. Please proceed to the next channel.",
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      };
+
+      setChannelMessages((prev) => ({
+        ...prev,
+        [activeChannel]: [...(prev[activeChannel] || []), completionMessage],
+      }));
+
+      setChannelProgress((prev) => ({
+        ...prev,
+        [activeChannel]: { ...prev[activeChannel], completed: true },
+      }));
+
+      setChannels((prev) =>
+        prev.map((ch) => (ch.id === activeChannel ? { ...ch, locked: true } : ch)),
+      );
+    }, 1000);
   };
 
-  const handleSubmitSimulation = () => {
+  const handleSubmitSimulation = async () => {
+    if (submitted) return;
+
+    if (simulationId) {
+      try {
+        await supabase
+          .from("simulations")
+          .update({ status: "submitted", completed_at: new Date().toISOString() })
+          .eq("id", simulationId);
+      } catch (err) {
+        console.error("Error submitting simulation:", err);
+      }
+    }
+
+    setSubmitted(true);
     toast({
       title: "Simulation submitted",
-      description: "Your responses are being analyzed. Results will be available shortly.",
+      description: "Thank you! Your responses are now with the recruiting team.",
     });
+  };
+
+  const handleAutoSubmit = async () => {
+    await handleSubmitSimulation();
   };
 
   if (error) {
@@ -278,10 +571,27 @@ export default function SimSession() {
     );
   }
 
-  if (loading || !session) {
+  if (loading || scenarioLoading || !session || !scenario || !activeChannel) {
     return (
       <div className="min-h-screen grid place-items-center bg-background p-6">
-        <div className="text-sm text-zinc-600">Loading simulation…</div>
+        <div className="flex items-center gap-3 text-sm text-zinc-600">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>Preparing your simulation…</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (submitted) {
+    return (
+      <div className="min-h-screen grid place-items-center bg-background p-6">
+        <div className="max-w-xl w-full rounded-2xl border bg-white p-6 shadow-sm text-center space-y-4">
+          <h1 className="text-2xl font-semibold">Simulation submitted</h1>
+          <p className="text-sm text-zinc-700">
+            Thanks for completing the simulation. Your responses and signals are now being shared
+            with the recruiting team. You can close this window.
+          </p>
+        </div>
       </div>
     );
   }
@@ -301,7 +611,7 @@ export default function SimSession() {
         timeRemaining={timeRemaining}
         violations={violations}
         onViolation={handleViolation}
-        simulationId={sessionId}
+        simulationId={scenarioKey}
       />
 
       <div className="flex-1 flex flex-col">
@@ -328,7 +638,7 @@ export default function SimSession() {
 
         <ChatArea
           channelName={activeChannel}
-          messages={messages}
+          messages={channelMessages[activeChannel] || []}
           onSendResponse={handleSendResponse}
           onSubmitSimulation={handleSubmitSimulation}
           violations={violations}
