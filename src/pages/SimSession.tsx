@@ -80,6 +80,153 @@ interface Scenario {
   questions: Question[];
 }
 
+const FALLBACK_SCENARIO: Scenario = {
+  agents: [
+    {
+      name: "Ari (Founder/PM)",
+      role: "Founder/PM",
+      personality: "High-energy pragmatist focused on shipping impact quickly",
+    },
+    {
+      name: "Baa (Lead Engineer)",
+      role: "Lead Engineer",
+      personality: "Calm systems thinker who values observability and clean rollouts",
+    },
+    {
+      name: "Mira (Design Lead)",
+      role: "Design Lead",
+      personality: "Research-driven collaborator who champions user empathy",
+    },
+    {
+      name: "Zee (Operations Lead)",
+      role: "Operations Lead",
+      personality: "Detail-oriented operator who keeps the org compliant and calm",
+    },
+  ],
+  channels: [
+    { id: "technical", name: "technical" },
+    { id: "product", name: "product-strategy" },
+    { id: "ops", name: "ops-escalations" },
+  ],
+  questions: [
+    {
+      id: "tech-q1",
+      channel: "technical",
+      mainQuestion:
+        "Our checkout API is throwing intermittent 500s during peak load. Walk us through how you would stabilize it over the next 48 hours.",
+      context: [
+        {
+          agent: "Ari (Founder/PM)",
+          message: "Appreciate you hopping in on short notice—the launch team is on edge.",
+        },
+        {
+          agent: "Baa (Lead Engineer)",
+          message:
+            "We rolled out a feature flag for the new pricing engine last night. Error rate spiked right after.",
+        },
+        { agent: "Baa (Lead Engineer)", message: "Mind kicking things off with your plan?" },
+      ],
+      followUps: [
+        {
+          id: "tech-q1-f1",
+          agent: "Baa (Lead Engineer)",
+          question: "Which telemetry or logs would you inspect first and why?",
+        },
+        {
+          id: "tech-q1-f2",
+          agent: "Ari (Founder/PM)",
+          question: "How do you keep stakeholders calm while you triage?",
+        },
+      ],
+      stimulus: {
+        type: "code",
+        title: "checkout-controller.ts (excerpt)",
+        content:
+          "try {\n  await PaymentService.charge(payload);\n} catch (err) {\n  logger.error({ err, payload }, 'charge failed');\n  metrics.increment('payments.failed');\n  throw err;\n}",
+      },
+    },
+    {
+      id: "product-q1",
+      channel: "product-strategy",
+      mainQuestion:
+        "We promised a partner demo of the analytics dashboard next Friday, but design wants to fix accessibility gaps first. How would you realign the team without blowing the deadline?",
+      context: [
+        {
+          agent: "Mira (Design Lead)",
+          message: "Audit flagged contrast issues and missing keyboard states. I'd prefer we fix them pre-demo.",
+        },
+        {
+          agent: "Ari (Founder/PM)",
+          message:
+            "Sales already invited twelve design partners. We can't slip the date without damaging trust.",
+        },
+      ],
+      followUps: [
+        {
+          id: "product-q1-f1",
+          agent: "Mira (Design Lead)",
+          question: "What criteria would you use to decide what ships in the demo versus GA?",
+        },
+        {
+          id: "product-q1-f2",
+          agent: "Ari (Founder/PM)",
+          question: "How do you communicate the trade-offs to partners so expectations stay aligned?",
+        },
+      ],
+      stimulus: {
+        type: "document",
+        title: "Demo Milestones",
+        content:
+          "- Friday: internal design review\n- Monday: engineering polish window\n- Next Friday: partner demo (12 invitees)\n- GA target: 14 days post-demo",
+      },
+    },
+    {
+      id: "ops-q1",
+      channel: "ops-escalations",
+      mainQuestion:
+        "Support escalated that 12% of enterprise invoices failed to send overnight. Outline the steps you'd take in the next two hours.",
+      context: [
+        {
+          agent: "Zee (Operations Lead)",
+          message:
+            "Finance is asking whether we should pause invoicing entirely until we understand the blast radius.",
+        },
+        {
+          agent: "Baa (Lead Engineer)",
+          message:
+            "We deployed a new worker for invoice batching yesterday evening—could be related, not sure yet.",
+        },
+      ],
+      followUps: [
+        {
+          id: "ops-q1-f1",
+          agent: "Zee (Operations Lead)",
+          question: "What signals tell you it's safe to resume sending invoices?",
+        },
+        {
+          id: "ops-q1-f2",
+          agent: "Ari (Founder/PM)",
+          question: "Who do you keep in the loop while you triage, and how often?",
+        },
+      ],
+      stimulus: {
+        type: "data",
+        title: "Failed Invoice Trend",
+        content: "Hour,Failure Rate\n00:00,0.4%\n01:00,0.6%\n02:00,11.8%\n03:00,12.2%\n04:00,12.6%",
+      },
+    },
+  ],
+};
+
+const cloneFallbackScenario = (): Scenario =>
+  JSON.parse(JSON.stringify(FALLBACK_SCENARIO)) as Scenario;
+
+const isValidScenario = (value: unknown): value is Scenario => {
+  if (!value || typeof value !== "object") return false;
+  const maybe = value as Partial<Scenario>;
+  return Array.isArray(maybe.questions) && maybe.questions.length > 0;
+};
+
 type ChannelProgress = Record<string, { questionIndex: number; followUpIndex: number; completed: boolean }>;
 
 export default function SimSession() {
@@ -100,6 +247,83 @@ export default function SimSession() {
   const [channelProgress, setChannelProgress] = useState<ChannelProgress>({});
   const [violations, setViolations] = useState<number>(0);
   const [timeRemaining, setTimeRemaining] = useState<string>("30:00");
+
+  const applyScenario = (scenarioPayload: Scenario) => {
+    const scenarioChannels =
+      (scenarioPayload.channels && scenarioPayload.channels.length > 0
+        ? scenarioPayload.channels
+        : FALLBACK_SCENARIO.channels) ?? [];
+
+    if (scenarioChannels.length === 0) {
+      setScenario(scenarioPayload);
+      setChannels([]);
+      setChannelProgress({});
+      setChannelMessages({});
+      setActiveChannel("");
+      return;
+    }
+
+    const normalizedChannels = scenarioChannels.map((ch) => ({
+      id: ch.id,
+      name: ch.name,
+      unread: 0,
+    }));
+
+    const initialProgress: ChannelProgress = {};
+    const initialMessages: Record<string, Message[]> = {};
+    normalizedChannels.forEach((ch) => {
+      initialProgress[ch.id] = { questionIndex: 0, followUpIndex: 0, completed: false };
+      initialMessages[ch.id] = [];
+    });
+
+    setScenario(scenarioPayload);
+    setChannels(normalizedChannels);
+    setChannelProgress(initialProgress);
+    setChannelMessages(initialMessages);
+
+    setActiveChannel((prev) =>
+      prev && normalizedChannels.some((channel) => channel.id === prev)
+        ? prev
+        : normalizedChannels[0]?.id ?? "",
+    );
+  };
+
+  const bootstrapScenario = async (
+    scenarioPayload: Scenario,
+    sessionData: SessionResponse,
+  ): Promise<void> => {
+    const persistencePayload = {
+      job_description: sessionData.job?.description ?? "",
+      company_description: sessionData.org?.company_description ?? "",
+      generated_scenario: scenarioPayload,
+      status: "in_progress",
+      user_id: null,
+    };
+
+    try {
+      if (!simulationId) {
+        const insertResult = await supabase
+          .from("simulations")
+          .insert(persistencePayload)
+          .select("id")
+          .single();
+
+        if (insertResult.error) throw insertResult.error;
+        if (!insertResult.data?.id) throw new Error("Missing simulation id from Supabase response");
+        setSimulationId(String(insertResult.data.id));
+      } else {
+        const { error: updateError } = await supabase
+          .from("simulations")
+          .update(persistencePayload)
+          .eq("id", simulationId);
+        if (updateError) throw updateError;
+      }
+    } catch (dbErr) {
+      throw dbErr;
+    }
+
+    applyScenario(scenarioPayload);
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -247,64 +471,28 @@ export default function SimSession() {
       if (functionError) throw functionError;
 
       const rawScenario = functionData?.scenario ?? functionData;
-      if (
-        !rawScenario ||
-        !Array.isArray((rawScenario as { questions?: unknown }).questions) ||
-        (rawScenario as { questions?: unknown[] }).questions?.length === 0
-      ) {
-        throw new Error("Simulation generator returned an empty scenario.");
+      if (!isValidScenario(rawScenario)) {
+        throw new Error("Simulation generator returned an unexpected response.");
       }
 
-      const scenarioPayload = rawScenario as Scenario;
-
-      const { data: insertedSimulation, error: insertError } = await supabase
-        .from("simulations")
-        .insert({
-          job_description: sessionData.job?.description ?? "",
-          company_description: sessionData.org?.company_description ?? "",
-          generated_scenario: scenarioPayload,
-          status: "in_progress",
-          user_id: null,
-        })
-        .select()
-        .single();
-
-      if (insertError) throw insertError;
-      if (!insertedSimulation?.id) {
-        throw new Error("Failed to create simulation session.");
-      }
-
-      setSimulationId(insertedSimulation.id);
-      setScenario(scenarioPayload);
-
-      const channelData: Channel[] = (scenarioPayload.channels ?? []).map((ch) => ({
-        id: ch.id,
-        name: ch.name,
-        unread: 0,
-      }));
-
-      const initialProgress: ChannelProgress = {};
-      const initialMessages: Record<string, Message[]> = {};
-      channelData.forEach((ch) => {
-        initialProgress[ch.id] = { questionIndex: 0, followUpIndex: 0, completed: false };
-        initialMessages[ch.id] = [];
-      });
-
-      setChannels(channelData);
-      setChannelProgress(initialProgress);
-      setChannelMessages(initialMessages);
-
-      if (channelData.length > 0) {
-        setActiveChannel(channelData[0].id);
-        loadChannelQuestions(channelData[0].id, scenarioPayload.questions);
-      }
+      await bootstrapScenario(rawScenario, sessionData);
     } catch (err) {
       console.error("[SimSession] scenario generation failed:", err);
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to generate the simulation scenario. Please contact your recruiter.",
-      );
+      const fallbackScenario = cloneFallbackScenario();
+      try {
+        await bootstrapScenario(fallbackScenario, sessionData);
+        toast({
+          title: "Generator unavailable",
+          description:
+            "We loaded a fallback scenario so you can keep going. Your responses will still be recorded.",
+          variant: "destructive",
+        });
+      } catch (fallbackErr) {
+        console.error("[SimSession] fallback scenario bootstrap failed:", fallbackErr);
+        setError(
+          "We couldn't start the simulation. Please contact your recruiter to request a new link.",
+        );
+      }
     } finally {
       setScenarioLoading(false);
     }
