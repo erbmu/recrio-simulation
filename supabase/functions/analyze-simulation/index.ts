@@ -8,6 +8,7 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") ?? "";
 
 const supabaseAdmin =
   SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
@@ -23,18 +24,24 @@ serve(async (req) => {
 
   try {
     const { simulation, responses } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!GEMINI_API_KEY) {
+      throw new Error("GEMINI_API_KEY is not configured");
+    }
 
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    if (!simulation?.generated_scenario) {
+      throw new Error("Simulation payload missing generated scenario");
     }
 
     const scenario = simulation.generated_scenario;
-    
-    // Build context from responses
-    const responsesContext = responses.map((r: any, idx: number) => 
-      `Q${idx + 1}: ${r.question_id}\nA: ${r.response}`
-    ).join("\n\n");
+    const responsesArray = Array.isArray(responses) ? responses : [];
+
+    const responsesContext = responsesArray
+      .map((r: Record<string, unknown>, idx: number) => {
+        const questionId = typeof r.question_id === "string" ? r.question_id : `unknown-${idx + 1}`;
+        const answer = typeof r.response === "string" ? r.response : "";
+        return `Q${idx + 1} (${questionId}):\n${answer}`;
+      })
+      .join("\n\n");
 
     const systemPrompt = `You are an exceptionally strict expert evaluator for top-tier startup founders and early-stage employees. 
 Your standards are extremely high - you're evaluating candidates as if they're applying to YC, Sequoia, or a FAANG company.
@@ -56,58 +63,57 @@ ${responsesContext}
 
 Provide scores (0-100) for each dimension with STRICT evaluation. Most candidates should score in the 30-70 range. Be brutally honest in your analysis.`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const url =
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent" +
+      `?key=${encodeURIComponent(GEMINI_API_KEY)}`;
+
+    const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: "Analyze the responses and provide scores." }
-        ],
-        tools: [
+        systemInstruction: { role: "system", parts: [{ text: systemPrompt }] },
+        contents: [
           {
-            type: "function",
-            function: {
-              name: "provide_scores",
-              description: "Return scoring analysis for all dimensions",
-              parameters: {
-                type: "object",
-                properties: {
-                  businessImpactScore: { type: "number", description: "Score 0-100" },
-                  technicalAccuracy: { type: "number", description: "Score 0-100" },
-                  tradeOffAnalysis: { type: "number", description: "Score 0-100" },
-                  communicationClarity: { type: "number", description: "Score 0-100" },
-                  adaptability: { type: "number", description: "Score 0-100" },
-                  creativityInnovationIndex: { type: "number", description: "Score 0-100" },
-                  biasTowardExecution: { type: "number", description: "Score 0-100" },
-                  learningAgility: { type: "number", description: "Score 0-100" },
-                  founderFitIndex: { type: "number", description: "Score 0-100" },
-                  overallStartupReadinessIndex: { type: "number", description: "Weighted composite score 0-100" },
-                  analysis: { type: "string", description: "Detailed explanation of scores" }
-                },
-                required: [
-                  "businessImpactScore",
-                  "technicalAccuracy", 
-                  "tradeOffAnalysis",
-                  "communicationClarity",
-                  "adaptability",
-                  "creativityInnovationIndex",
-                  "biasTowardExecution",
-                  "learningAgility",
-                  "founderFitIndex",
-                  "overallStartupReadinessIndex",
-                  "analysis"
-                ],
-                additionalProperties: false
-              }
-            }
-          }
+            role: "user",
+            parts: [{ text: "Analyze the responses and return strict hiring scores." }],
+          },
         ],
-        tool_choice: { type: "function", function: { name: "provide_scores" } }
+        generationConfig: {
+          candidateCount: 1,
+          temperature: 0.2,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: "object",
+            properties: {
+              businessImpactScore: { type: "number" },
+              technicalAccuracy: { type: "number" },
+              tradeOffAnalysis: { type: "number" },
+              communicationClarity: { type: "number" },
+              adaptability: { type: "number" },
+              creativityInnovationIndex: { type: "number" },
+              biasTowardExecution: { type: "number" },
+              learningAgility: { type: "number" },
+              founderFitIndex: { type: "number" },
+              overallStartupReadinessIndex: { type: "number" },
+              analysis: { type: "string" },
+            },
+            required: [
+              "businessImpactScore",
+              "technicalAccuracy",
+              "tradeOffAnalysis",
+              "communicationClarity",
+              "adaptability",
+              "creativityInnovationIndex",
+              "biasTowardExecution",
+              "learningAgility",
+              "founderFitIndex",
+              "overallStartupReadinessIndex",
+              "analysis",
+            ],
+          },
+        },
       }),
     });
 
@@ -118,8 +124,23 @@ Provide scores (0-100) for each dimension with STRICT evaluation. Most candidate
     }
 
     const data = await response.json();
-    const toolCall = data.choices[0].message.tool_calls[0];
-    const scores = JSON.parse(toolCall.function.arguments);
+    const scoresRaw =
+      data?.candidates?.[0]?.content?.parts
+        ?.map((part: { text?: string }) => part?.text ?? "")
+        .join("")
+        .trim() ?? "";
+
+    if (!scoresRaw) {
+      throw new Error("Gemini returned an empty response");
+    }
+
+    let scores;
+    try {
+      scores = JSON.parse(scoresRaw);
+    } catch (parseErr) {
+      console.error("Failed to parse Gemini analysis JSON:", parseErr, scoresRaw);
+      throw new Error("Failed to parse analysis output");
+    }
 
     if (supabaseAdmin && simulation?.id) {
       const { error: updateError } = await supabaseAdmin
