@@ -46,6 +46,7 @@ interface Channel {
   name: string;
   unread?: number;
   locked?: boolean;
+  completed?: boolean;
 }
 
 interface ScenarioAgent {
@@ -263,10 +264,12 @@ export default function SimSession() {
       return;
     }
 
-    const normalizedChannels = scenarioChannels.map((ch) => ({
+    const normalizedChannels = scenarioChannels.map((ch, idx) => ({
       id: ch.id,
       name: ch.name,
       unread: 0,
+      locked: idx > 0,
+      completed: false,
     }));
 
     const initialProgress: ChannelProgress = {};
@@ -717,9 +720,32 @@ export default function SimSession() {
         [activeChannel]: { ...prev[activeChannel], completed: true },
       }));
 
-      setChannels((prev) =>
-        prev.map((ch) => (ch.id === activeChannel ? { ...ch, locked: true } : ch)),
-      );
+      setChannels((prev) => {
+        const currentIndex = prev.findIndex((ch) => ch.id === activeChannel);
+        return prev.map((ch, idx) => {
+          if (idx === currentIndex) {
+            return { ...ch, locked: false, completed: true };
+          }
+          if (idx === currentIndex + 1) {
+            return { ...ch, locked: false };
+          }
+          return ch;
+        });
+      });
+
+      setChannelProgress((prev) => ({
+        ...prev,
+        [activeChannel]: { ...prev[activeChannel], completed: true },
+      }));
+
+      const nextChannel =
+        channels.findIndex((ch) => ch.id === activeChannel) >= 0
+          ? channels[channels.findIndex((ch) => ch.id === activeChannel) + 1]
+          : null;
+
+      if (nextChannel) {
+        setActiveChannel(nextChannel.id);
+      }
     }, 1000);
   };
 
