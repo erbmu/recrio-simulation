@@ -1,7 +1,7 @@
-project_id = "uxzshwdfdoyclxwqjuzm"
+project_id = "aqpkqexfcrxhcpdkcxje"
 
 [functions.generate-simulation]
 verify_jwt = false
 
-[functions.analyze-proctoring]
+[functions.analyze-simulation]
 verify_jwt = false
