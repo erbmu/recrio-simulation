@@ -249,39 +249,6 @@ export default function SimSession() {
   const [violations, setViolations] = useState<number>(0);
   const [timeRemaining, setTimeRemaining] = useState<string>("30:00");
 
-  const applyScenario = (scenarioPayload: Scenario) => {
-    const scenarioChannels =
-      (scenarioPayload.channels && scenarioPayload.channels.length > 0
-        ? scenarioPayload.channels
-        : FALLBACK_SCENARIO.channels) ?? [];
-
-    const normalizedChannels = scenarioChannels.map((ch, idx) => ({
-      id: ch.id,
-      name: ch.name,
-      unread: 0,
-      locked: idx !== 0,
-      completed: false,
-    }));
-
-    const initialProgress: ChannelProgress = {};
-    normalizedChannels.forEach((ch) => {
-      initialProgress[ch.id] = { questionIndex: 0, followUpIndex: 0, completed: false };
-    });
-
-    setScenario(scenarioPayload);
-    setChannels(normalizedChannels);
-    setChannelProgress(initialProgress);
-    setChannelMessages(() => ({}));
-
-    const firstChannelId = normalizedChannels[0]?.id ?? "";
-    if (firstChannelId) {
-      loadChannelQuestions(firstChannelId, scenarioPayload.questions, true);
-      setActiveChannel(firstChannelId);
-    } else {
-      setActiveChannel("");
-    }
-  };
-
   const bootstrapScenario = async (
     scenarioPayload: Scenario,
     sessionData: SessionResponse,
@@ -454,6 +421,42 @@ export default function SimSession() {
       });
     },
     [],
+  );
+
+  const applyScenario = useCallback(
+    (scenarioPayload: Scenario) => {
+      const scenarioChannels =
+        (scenarioPayload.channels && scenarioPayload.channels.length > 0
+          ? scenarioPayload.channels
+          : FALLBACK_SCENARIO.channels) ?? [];
+
+      const normalizedChannels = scenarioChannels.map((ch, idx) => ({
+        id: ch.id,
+        name: ch.name,
+        unread: 0,
+        locked: idx !== 0,
+        completed: false,
+      }));
+
+      const initialProgress: ChannelProgress = {};
+      normalizedChannels.forEach((ch) => {
+        initialProgress[ch.id] = { questionIndex: 0, followUpIndex: 0, completed: false };
+      });
+
+      setScenario(scenarioPayload);
+      setChannels(normalizedChannels);
+      setChannelProgress(initialProgress);
+      setChannelMessages(() => ({}));
+
+      const firstChannelId = normalizedChannels[0]?.id ?? "";
+      if (firstChannelId) {
+        loadChannelQuestions(firstChannelId, scenarioPayload.questions, true);
+        setActiveChannel(firstChannelId);
+      } else {
+        setActiveChannel("");
+      }
+    },
+    [loadChannelQuestions],
   );
 
   const initializeScenario = async (sessionData: SessionResponse) => {
@@ -747,7 +750,7 @@ export default function SimSession() {
       });
 
       if (upcomingChannelId && scenario) {
-        loadChannelQuestions(upcomingChannelId, scenario.questions);
+        loadChannelQuestions(upcomingChannelId, scenario.questions, true);
         setActiveChannel(upcomingChannelId);
       }
     }, 1000);

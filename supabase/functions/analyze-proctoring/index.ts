@@ -51,7 +51,7 @@ Be EXTREMELY STRICT. The person must be facing the camera directly with their FU
 Return high confidence scores (85-100) when detecting violations.`;
 
     const url =
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent" +
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent" +
       `?key=${encodeURIComponent(GEMINI_API_KEY)}`;
 
     const response = await fetch(url, {

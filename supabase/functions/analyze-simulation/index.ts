@@ -64,7 +64,7 @@ ${responsesContext}
 Provide scores (0-100) for each dimension with STRICT evaluation. Most candidates should score in the 30-70 range. Be brutally honest in your analysis.`;
 
     const url =
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent" +
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent" +
       `?key=${encodeURIComponent(GEMINI_API_KEY)}`;
 
     const response = await fetch(url, {

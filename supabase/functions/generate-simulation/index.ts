@@ -70,7 +70,7 @@ ${companyDescription}
 Remember: 3 channels; exactly 6 questions per channel (including follow-ups); provide stimulus wherever referenced; return ONLY JSON (no prose).`;
 
     // Gemini generateContent call
-    const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+    const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
       + `?key=${encodeURIComponent(GEMINI_API_KEY)}`;
 
     const payload = {
