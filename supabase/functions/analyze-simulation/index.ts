@@ -28,6 +28,12 @@ serve(async (req) => {
       throw new Error("GEMINI_API_KEY is not configured");
     }
 
+    console.log(
+      "analyze-simulation invoked",
+      simulation?.id ?? "unknown-simulation",
+      Array.isArray(responses) ? `responses=${responses.length}` : "responses=unknown",
+    );
+
     if (!simulation?.generated_scenario) {
       throw new Error("Simulation payload missing generated scenario");
     }

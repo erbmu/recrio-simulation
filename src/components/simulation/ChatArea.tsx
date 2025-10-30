@@ -24,6 +24,7 @@ interface ChatAreaProps {
   onSendResponse: (response: string) => void;
   onSubmitSimulation: () => void;
   violations: number;
+  inputDisabled?: boolean;
 }
 
 export const ChatArea = ({
@@ -32,6 +33,7 @@ export const ChatArea = ({
   onSendResponse,
   onSubmitSimulation,
   violations,
+  inputDisabled = false,
 }: ChatAreaProps) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { speak, stop, currentSpeaker } = useTextToSpeech();
@@ -123,6 +125,7 @@ export const ChatArea = ({
       <ResponseInput 
         onSubmit={onSendResponse} 
         onRecordingStart={handleRecordingStart}
+        disabled={inputDisabled}
       />
     </div>
   );

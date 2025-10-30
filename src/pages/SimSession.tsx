@@ -382,22 +382,24 @@ export default function SimSession() {
     [simulationId, session?.application?.id, token, payload],
   );
 
-const loadChannelQuestions = useCallback(
-  (channelId: string, questions: Question[], force = false) => {
-    setChannelMessages((prev) => {
-      if (!force && prev[channelId]?.length) {
-        return prev;
-      }
-
+  const loadChannelQuestions = useCallback(
+    (channelId: string, questions: Question[], force = false) => {
       const normalizedTarget = channelId.trim().toLowerCase();
-      const channelQuestions = questions.filter((q) => {
-        const source = (q.channel ?? "").trim().toLowerCase();
-        return source === normalizedTarget;
-      });
-      if (channelQuestions.length === 0) {
-        console.warn("No questions found for channel", channelId);
-        return prev;
-      }
+
+      setChannelMessages((prev) => {
+        if (!force && prev[channelId]?.length) {
+          return prev;
+        }
+
+        const channelQuestions = questions.filter((q) => {
+          const source = (q.channel ?? "").trim().toLowerCase();
+          return source === normalizedTarget;
+        });
+
+        if (channelQuestions.length === 0) {
+          console.warn("No questions found for channel", channelId);
+          return prev;
+        }
 
         const firstQuestion = channelQuestions[0];
         const questionMessages: Message[] = [];
@@ -408,7 +410,10 @@ const loadChannelQuestions = useCallback(
             role: "agent",
             author: ctx.agent,
             content: ctx.message,
-            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            timestamp: new Date().toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
           });
         });
 
@@ -417,7 +422,10 @@ const loadChannelQuestions = useCallback(
           role: "agent",
           author: firstQuestion.context[0]?.agent || "Team",
           content: firstQuestion.mainQuestion,
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          timestamp: new Date().toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
           stimulus: firstQuestion.stimulus,
         });
 
@@ -427,14 +435,15 @@ const loadChannelQuestions = useCallback(
     [],
   );
 
-const applyScenario = useCallback(
-  (scenarioPayload: Scenario) => {
-    const scenarioChannels =
-      (scenarioPayload.channels && scenarioPayload.channels.length > 0
-        ? scenarioPayload.channels
-        : FALLBACK_SCENARIO.channels) ?? [];
 
-    const normalizedChannels = scenarioChannels.map((ch, idx) => ({
+  const applyScenario = useCallback(
+    (scenarioPayload: Scenario) => {
+      const scenarioChannels =
+        (scenarioPayload.channels && scenarioPayload.channels.length > 0
+          ? scenarioPayload.channels
+          : FALLBACK_SCENARIO.channels) ?? [];
+
+      const normalizedChannels = scenarioChannels.map((ch, idx) => ({
         id: ch.id,
         name: ch.name,
         unread: 0,
@@ -442,25 +451,24 @@ const applyScenario = useCallback(
         completed: false,
       }));
 
-    const initialProgress: ChannelProgress = {};
-    normalizedChannels.forEach((ch) => {
-      initialProgress[ch.id] = { questionIndex: 0, followUpIndex: 0, completed: false };
-    });
+      const initialProgress: ChannelProgress = {};
+      normalizedChannels.forEach((ch) => {
+        initialProgress[ch.id] = { questionIndex: 0, followUpIndex: 0, completed: false };
+      });
 
-    setScenario(scenarioPayload);
-    setChannels(normalizedChannels);
-    setChannelProgress(initialProgress);
+      setScenario(scenarioPayload);
+      setChannels(normalizedChannels);
+      setChannelProgress(initialProgress);
       setChannelMessages({});
 
-    const firstChannelId = normalizedChannels[0]?.id ?? "";
-    if (firstChannelId) {
-      loadChannelQuestions(firstChannelId, scenarioPayload.questions, true);
-      setActiveChannel(firstChannelId);
+      const firstChannelId = normalizedChannels[0]?.id ?? "";
+      if (firstChannelId) {
+        setActiveChannel(firstChannelId);
       } else {
         setActiveChannel("");
       }
     },
-    [loadChannelQuestions],
+    [],
   );
 
   const initializeScenario = async (sessionData: SessionResponse) => {
@@ -588,13 +596,9 @@ const applyScenario = useCallback(
         return;
       }
 
-      if (scenario) {
-        loadChannelQuestions(channelId, scenario.questions, true);
-      }
-
       setActiveChannel(channelId);
     },
-    [channels, loadChannelQuestions, scenario],
+    [channels],
   );
 
   const handleSendResponse = async (rawResponse: string) => {
@@ -737,6 +741,11 @@ const applyScenario = useCallback(
         [activeChannel]: [...(prev[activeChannel] || []), completionMessage],
       }));
 
+      setChannelProgress((prev) => ({
+        ...prev,
+        [activeChannel]: { ...prev[activeChannel], completed: true },
+      }));
+
       let upcomingChannelId: string | null = null;
 
       setChannels((prev) => {
@@ -753,8 +762,7 @@ const applyScenario = useCallback(
         });
       });
 
-      if (upcomingChannelId && scenario) {
-        loadChannelQuestions(upcomingChannelId, scenario.questions, true);
+      if (upcomingChannelId) {
         setActiveChannel(upcomingChannelId);
       }
     }, 1000);
@@ -806,6 +814,8 @@ const applyScenario = useCallback(
       </div>
     );
   }
+
+  const activeProgress = activeChannel ? channelProgress[activeChannel] : undefined;
 
   if (submitted) {
     return (
@@ -867,6 +877,7 @@ const applyScenario = useCallback(
           onSendResponse={handleSendResponse}
           onSubmitSimulation={handleSubmitSimulation}
           violations={violations}
+          inputDisabled={Boolean(activeProgress?.completed)}
         />
       </div>
     </div>
