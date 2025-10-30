@@ -251,41 +251,6 @@ export default function SimSession() {
   const [violations, setViolations] = useState<number>(0);
   const [timeRemaining, setTimeRemaining] = useState<string>("30:00");
 
-  const registerSimulationWithAts = useCallback(
-    async (applicationId: string | number | undefined, supabaseId: string | null) => {
-      if (!applicationId || !supabaseId) return;
-
-      try {
-        const headers: Record<string, string> = {
-          "Content-Type": "application/json",
-        };
-        if (ATS_WEBHOOK_SECRET) {
-          headers["x-sim-webhook-secret"] = ATS_WEBHOOK_SECRET;
-        }
-
-        const resp = await fetch(`${API}/api/simulations/register`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            applicationId,
-            supabaseSimulationId: supabaseId,
-          }),
-        });
-
-        if (!resp.ok) {
-          const text = await resp.text();
-          console.error("Failed to register supabase simulation with ATS", resp.status, text);
-          return;
-        }
-
-        hasRegisteredRef.current = true;
-      } catch (err) {
-        console.error("Error registering supabase simulation with ATS:", err);
-      }
-    },
-    [],
-  );
-
   const bootstrapScenario = async (
     scenarioPayload: Scenario,
     sessionData: SessionResponse,
@@ -313,7 +278,7 @@ export default function SimSession() {
         const applicationId =
           sessionData.application?.id ??
           (sessionData as Record<string, unknown>)?.application_id ??
-          sessionData.applicationId;
+          (sessionData as Record<string, unknown>)?.applicationId;
         await registerSimulationWithAts(applicationId as string | number | undefined, newSimulationId);
       } else {
         const { error: updateError } = await supabase
@@ -324,7 +289,7 @@ export default function SimSession() {
         const applicationId =
           sessionData.application?.id ??
           (sessionData as Record<string, unknown>)?.application_id ??
-          sessionData.applicationId;
+          (sessionData as Record<string, unknown>)?.applicationId;
         await registerSimulationWithAts(applicationId as string | number | undefined, simulationId);
       }
     } catch (dbErr) {
@@ -425,9 +390,22 @@ export default function SimSession() {
     };
   }, [token, payload]);
 
-  const scenarioKey = useMemo(
-    () => simulationId ?? String(session?.application?.id ?? token ?? payload ?? "public"),
-    [simulationId, session?.application?.id, token, payload],
+const scenarioKey = useMemo(
+  () => simulationId ?? String(session?.application?.id ?? token ?? payload ?? "public"),
+  [simulationId, session?.application?.id, token, payload],
+);
+
+  const getNextChannelId = useCallback(
+    (currentId: string) => {
+      if (!scenario?.channels?.length) return null;
+      const normalizedCurrent = currentId.trim().toLowerCase();
+      const orderedIds = scenario.channels.map((ch) => ch.id.trim().toLowerCase());
+      const idx = orderedIds.indexOf(normalizedCurrent);
+      if (idx === -1) return null;
+      const next = scenario.channels[idx + 1];
+      return next ? next.id : null;
+    },
+    [scenario],
   );
 
   const loadChannelQuestions = useCallback(
@@ -616,21 +594,6 @@ export default function SimSession() {
     }
   }, [activeChannel, scenario, channelMessages, loadChannelQuestions]);
 
-  useEffect(() => {
-    if (!simulationId || !session || hasRegisteredRef.current) return;
-
-    const applicationId =
-      session.application?.id ??
-      (session as Record<string, unknown>)?.application_id ??
-      (session as Record<string, unknown>)?.applicationId;
-
-    if (!applicationId) return;
-
-    registerSimulationWithAts(applicationId as string | number | undefined, simulationId).catch(
-      (err) => console.error("Failed to ensure ATS registration:", err),
-    );
-  }, [session, simulationId, registerSimulationWithAts]);
-
   const handleViolation = async (type: string) => {
     setViolations((prev) => prev + 1);
 
@@ -794,28 +757,26 @@ export default function SimSession() {
     }
 
     setTimeout(() => {
-      let upcomingChannelId: string | null = null;
+      const nextChannelId = getNextChannelId(activeChannel);
 
-      setChannels((prev) => {
-        const currentIndex = prev.findIndex((ch) => ch.id === activeChannel);
-        return prev.map((ch, idx) => {
-          if (idx === currentIndex) {
+      setChannels((prev) =>
+        prev.map((ch) => {
+          if (ch.id === activeChannel) {
             return { ...ch, locked: false, completed: true };
           }
-          if (idx === currentIndex + 1) {
-            upcomingChannelId = ch.id;
+          if (nextChannelId && ch.id === nextChannelId) {
             return { ...ch, locked: false };
           }
           return ch;
-        });
-      });
+        }),
+      );
 
       setChannelProgress((prev) => ({
         ...prev,
         [activeChannel]: { ...prev[activeChannel], completed: true },
       }));
 
-      const completionText = upcomingChannelId
+      const completionText = nextChannelId
         ? "🎉 Escalation resolved! Great work. Please proceed to the next channel."
         : "🎉 Escalation resolved! This simulation is complete. You're all done.";
 
@@ -835,11 +796,26 @@ export default function SimSession() {
         [activeChannel]: [...(prev[activeChannel] || []), completionMessage],
       }));
 
-      if (upcomingChannelId) {
-        setActiveChannel(upcomingChannelId);
+      if (nextChannelId) {
+        setActiveChannel(nextChannelId);
       }
     }, 1000);
   };
+
+  useEffect(() => {
+    if (!simulationId || !session || hasRegisteredRef.current) return;
+
+    const applicationId =
+      session.application?.id ??
+      (session as Record<string, unknown>)?.application_id ??
+      (session as Record<string, unknown>)?.applicationId;
+
+    if (!applicationId) return;
+
+    registerSimulationWithAts(applicationId as string | number | undefined, simulationId).catch(
+      (err) => console.error("Failed to ensure ATS registration:", err),
+    );
+  }, [simulationId, session, registerSimulationWithAts]);
 
   const handleSubmitSimulation = async () => {
     if (submitted) return;
@@ -853,11 +829,6 @@ export default function SimSession() {
       } catch (err) {
         console.error("Error submitting simulation:", err);
       }
-      const applicationId =
-        session?.application?.id ??
-        (session as Record<string, unknown>)?.application_id ??
-        (session as Record<string, unknown>)?.applicationId;
-      await registerSimulationWithAts(applicationId as string | number | undefined, simulationId);
       supabase.functions
         .invoke("analyze-simulation", { body: { simulationId } })
         .catch((err) => console.error("Failed to queue analysis", err));
@@ -964,3 +935,37 @@ export default function SimSession() {
     </div>
   );
 }
+  const registerSimulationWithAts = useCallback(
+    async (applicationId: string | number | undefined, supabaseId: string | null) => {
+      if (!applicationId || !supabaseId || hasRegisteredRef.current) return;
+
+      try {
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        if (ATS_WEBHOOK_SECRET) {
+          headers["x-sim-webhook-secret"] = ATS_WEBHOOK_SECRET;
+        }
+
+        const resp = await fetch(`${API}/api/simulations/register`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            applicationId,
+            supabaseSimulationId: supabaseId,
+          }),
+        });
+
+        if (!resp.ok) {
+          const text = await resp.text();
+          console.error("Failed to register simulation with ATS", resp.status, text);
+          return;
+        }
+
+        hasRegisteredRef.current = true;
+      } catch (err) {
+        console.error("Error registering simulation with ATS:", err);
+      }
+    },
+    [],
+  );
