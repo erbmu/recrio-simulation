@@ -106,8 +106,8 @@ const FALLBACK_SCENARIO: Scenario = {
   ],
   channels: [
     { id: "technical", name: "technical" },
-    { id: "product", name: "product-strategy" },
-    { id: "ops", name: "ops-escalations" },
+    { id: "product", name: "product" },
+    { id: "ops", name: "ops" },
   ],
   questions: [
     {
@@ -148,7 +148,7 @@ const FALLBACK_SCENARIO: Scenario = {
     },
     {
       id: "product-q1",
-      channel: "product-strategy",
+      channel: "product",
       mainQuestion:
         "We promised a partner demo of the analytics dashboard next Friday, but design wants to fix accessibility gaps first. How would you realign the team without blowing the deadline?",
       context: [
@@ -183,7 +183,7 @@ const FALLBACK_SCENARIO: Scenario = {
     },
     {
       id: "ops-q1",
-      channel: "ops-escalations",
+      channel: "ops",
       mainQuestion:
         "Support escalated that 12% of enterprise invoices failed to send overnight. Outline the steps you'd take in the next two hours.",
       context: [
@@ -382,18 +382,22 @@ export default function SimSession() {
     [simulationId, session?.application?.id, token, payload],
   );
 
-  const loadChannelQuestions = useCallback(
-    (channelId: string, questions: Question[], force = false) => {
-      setChannelMessages((prev) => {
-        if (!force && prev[channelId]?.length) {
-          return prev;
-        }
+const loadChannelQuestions = useCallback(
+  (channelId: string, questions: Question[], force = false) => {
+    setChannelMessages((prev) => {
+      if (!force && prev[channelId]?.length) {
+        return prev;
+      }
 
-        const channelQuestions = questions.filter((q) => q.channel === channelId);
-        if (channelQuestions.length === 0) {
-          console.warn("No questions found for channel", channelId);
-          return prev;
-        }
+      const normalizedTarget = channelId.trim().toLowerCase();
+      const channelQuestions = questions.filter((q) => {
+        const source = (q.channel ?? "").trim().toLowerCase();
+        return source === normalizedTarget;
+      });
+      if (channelQuestions.length === 0) {
+        console.warn("No questions found for channel", channelId);
+        return prev;
+      }
 
         const firstQuestion = channelQuestions[0];
         const questionMessages: Message[] = [];
@@ -423,14 +427,14 @@ export default function SimSession() {
     [],
   );
 
-  const applyScenario = useCallback(
-    (scenarioPayload: Scenario) => {
-      const scenarioChannels =
-        (scenarioPayload.channels && scenarioPayload.channels.length > 0
-          ? scenarioPayload.channels
-          : FALLBACK_SCENARIO.channels) ?? [];
+const applyScenario = useCallback(
+  (scenarioPayload: Scenario) => {
+    const scenarioChannels =
+      (scenarioPayload.channels && scenarioPayload.channels.length > 0
+        ? scenarioPayload.channels
+        : FALLBACK_SCENARIO.channels) ?? [];
 
-      const normalizedChannels = scenarioChannels.map((ch, idx) => ({
+    const normalizedChannels = scenarioChannels.map((ch, idx) => ({
         id: ch.id,
         name: ch.name,
         unread: 0,
@@ -438,20 +442,20 @@ export default function SimSession() {
         completed: false,
       }));
 
-      const initialProgress: ChannelProgress = {};
-      normalizedChannels.forEach((ch) => {
-        initialProgress[ch.id] = { questionIndex: 0, followUpIndex: 0, completed: false };
-      });
+    const initialProgress: ChannelProgress = {};
+    normalizedChannels.forEach((ch) => {
+      initialProgress[ch.id] = { questionIndex: 0, followUpIndex: 0, completed: false };
+    });
 
-      setScenario(scenarioPayload);
-      setChannels(normalizedChannels);
-      setChannelProgress(initialProgress);
-      setChannelMessages(() => ({}));
+    setScenario(scenarioPayload);
+    setChannels(normalizedChannels);
+    setChannelProgress(initialProgress);
+      setChannelMessages({});
 
-      const firstChannelId = normalizedChannels[0]?.id ?? "";
-      if (firstChannelId) {
-        loadChannelQuestions(firstChannelId, scenarioPayload.questions, true);
-        setActiveChannel(firstChannelId);
+    const firstChannelId = normalizedChannels[0]?.id ?? "";
+    if (firstChannelId) {
+      loadChannelQuestions(firstChannelId, scenarioPayload.questions, true);
+      setActiveChannel(firstChannelId);
       } else {
         setActiveChannel("");
       }
@@ -585,7 +589,7 @@ export default function SimSession() {
       }
 
       if (scenario) {
-        loadChannelQuestions(channelId, scenario.questions);
+        loadChannelQuestions(channelId, scenario.questions, true);
       }
 
       setActiveChannel(channelId);
