@@ -1,5 +1,5 @@
 // src/pages/SimSession.tsx
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Sidebar } from "@/components/simulation/Sidebar";
 import { ChatArea, Message } from "@/components/simulation/ChatArea";
@@ -8,7 +8,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
-const ATS_WEBHOOK_SECRET = import.meta.env.VITE_SIM_WEBHOOK_SECRET;
 const USED_LINK_MESSAGE =
   "This link has already been used or has expired. Please contact your recruiter if you think this is a mistake.";
 
@@ -242,7 +241,6 @@ export default function SimSession() {
   const [scenario, setScenario] = useState<Scenario | null>(null);
   const [simulationId, setSimulationId] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
-  const hasRegisteredRef = useRef(false);
 
   const [channels, setChannels] = useState<Channel[]>([]);
   const [activeChannel, setActiveChannel] = useState<string>("");
@@ -275,22 +273,12 @@ export default function SimSession() {
         if (!insertResult.data?.id) throw new Error("Missing simulation id from Supabase response");
         const newSimulationId = String(insertResult.data.id);
         setSimulationId(newSimulationId);
-        const applicationId =
-          sessionData.application?.id ??
-          (sessionData as Record<string, unknown>)?.application_id ??
-          (sessionData as Record<string, unknown>)?.applicationId;
-        await registerSimulationWithAts(applicationId as string | number | undefined, newSimulationId);
       } else {
         const { error: updateError } = await supabase
           .from("simulations")
           .update(persistencePayload)
           .eq("id", simulationId);
         if (updateError) throw updateError;
-        const applicationId =
-          sessionData.application?.id ??
-          (sessionData as Record<string, unknown>)?.application_id ??
-          (sessionData as Record<string, unknown>)?.applicationId;
-        await registerSimulationWithAts(applicationId as string | number | undefined, simulationId);
       }
     } catch (dbErr) {
       throw dbErr;
@@ -802,21 +790,6 @@ const scenarioKey = useMemo(
     }, 1000);
   };
 
-  useEffect(() => {
-    if (!simulationId || !session || hasRegisteredRef.current) return;
-
-    const applicationId =
-      session.application?.id ??
-      (session as Record<string, unknown>)?.application_id ??
-      (session as Record<string, unknown>)?.applicationId;
-
-    if (!applicationId) return;
-
-    registerSimulationWithAts(applicationId as string | number | undefined, simulationId).catch(
-      (err) => console.error("Failed to ensure ATS registration:", err),
-    );
-  }, [simulationId, session, registerSimulationWithAts]);
-
   const handleSubmitSimulation = async () => {
     if (submitted) return;
 
@@ -935,37 +908,3 @@ const scenarioKey = useMemo(
     </div>
   );
 }
-  const registerSimulationWithAts = useCallback(
-    async (applicationId: string | number | undefined, supabaseId: string | null) => {
-      if (!applicationId || !supabaseId || hasRegisteredRef.current) return;
-
-      try {
-        const headers: Record<string, string> = {
-          "Content-Type": "application/json",
-        };
-        if (ATS_WEBHOOK_SECRET) {
-          headers["x-sim-webhook-secret"] = ATS_WEBHOOK_SECRET;
-        }
-
-        const resp = await fetch(`${API}/api/simulations/register`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            applicationId,
-            supabaseSimulationId: supabaseId,
-          }),
-        });
-
-        if (!resp.ok) {
-          const text = await resp.text();
-          console.error("Failed to register simulation with ATS", resp.status, text);
-          return;
-        }
-
-        hasRegisteredRef.current = true;
-      } catch (err) {
-        console.error("Error registering simulation with ATS:", err);
-      }
-    },
-    [],
-  );
