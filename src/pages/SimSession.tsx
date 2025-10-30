@@ -253,12 +253,24 @@ export default function SimSession() {
     scenarioPayload: Scenario,
     sessionData: SessionResponse,
   ): Promise<void> => {
+    const externalSimulationIdRaw =
+      (sessionData as Record<string, unknown>)?.simulationId ??
+      (sessionData as Record<string, unknown>)?.simulation_id ??
+      (sessionData as Record<string, unknown>)?.simulation?.id ??
+      (sessionData.application as Record<string, unknown>)?.simulation_id ??
+      (sessionData.application as Record<string, unknown>)?.simulationId;
+
+    const externalSimulationId = externalSimulationIdRaw
+      ? String(externalSimulationIdRaw)
+      : null;
+
     const persistencePayload = {
       job_description: sessionData.job?.description ?? "",
       company_description: sessionData.org?.company_description ?? "",
       generated_scenario: scenarioPayload,
       status: "in_progress",
       user_id: null,
+      external_simulation_id: externalSimulationId,
     };
 
     try {

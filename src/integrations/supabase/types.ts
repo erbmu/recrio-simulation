@@ -88,6 +88,7 @@ export type Database = {
           company_description: string
           completed_at: string | null
           created_at: string | null
+          external_simulation_id: string | null
           generated_scenario: Json
           id: string
           job_description: string
@@ -101,6 +102,7 @@ export type Database = {
           company_description: string
           completed_at?: string | null
           created_at?: string | null
+          external_simulation_id?: string | null
           generated_scenario: Json
           id?: string
           job_description: string
@@ -114,6 +116,7 @@ export type Database = {
           company_description?: string
           completed_at?: string | null
           created_at?: string | null
+          external_simulation_id?: string | null
           generated_scenario?: Json
           id?: string
           job_description?: string
