@@ -1,5 +1,5 @@
 // src/pages/SimSession.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Sidebar } from "@/components/simulation/Sidebar";
 import { ChatArea, Message } from "@/components/simulation/ChatArea";
@@ -255,40 +255,31 @@ export default function SimSession() {
         ? scenarioPayload.channels
         : FALLBACK_SCENARIO.channels) ?? [];
 
-    if (scenarioChannels.length === 0) {
-      setScenario(scenarioPayload);
-      setChannels([]);
-      setChannelProgress({});
-      setChannelMessages({});
-      setActiveChannel("");
-      return;
-    }
-
     const normalizedChannels = scenarioChannels.map((ch, idx) => ({
       id: ch.id,
       name: ch.name,
       unread: 0,
-      locked: idx > 0,
+      locked: idx !== 0,
       completed: false,
     }));
 
     const initialProgress: ChannelProgress = {};
-    const initialMessages: Record<string, Message[]> = {};
     normalizedChannels.forEach((ch) => {
       initialProgress[ch.id] = { questionIndex: 0, followUpIndex: 0, completed: false };
-      initialMessages[ch.id] = [];
     });
 
     setScenario(scenarioPayload);
     setChannels(normalizedChannels);
     setChannelProgress(initialProgress);
-    setChannelMessages(initialMessages);
+    setChannelMessages(() => ({}));
 
-    setActiveChannel((prev) =>
-      prev && normalizedChannels.some((channel) => channel.id === prev)
-        ? prev
-        : normalizedChannels[0]?.id ?? "",
-    );
+    const firstChannelId = normalizedChannels[0]?.id ?? "";
+    if (firstChannelId) {
+      loadChannelQuestions(firstChannelId, scenarioPayload.questions, true);
+      setActiveChannel(firstChannelId);
+    } else {
+      setActiveChannel("");
+    }
   };
 
   const bootstrapScenario = async (
@@ -424,34 +415,46 @@ export default function SimSession() {
     [simulationId, session?.application?.id, token, payload],
   );
 
-  const loadChannelQuestions = (channelId: string, questions: Question[]) => {
-    const channelQuestions = questions.filter((q) => q.channel === channelId);
-    if (channelQuestions.length === 0) return;
+  const loadChannelQuestions = useCallback(
+    (channelId: string, questions: Question[], force = false) => {
+      setChannelMessages((prev) => {
+        if (!force && prev[channelId]?.length) {
+          return prev;
+        }
 
-    const firstQuestion = channelQuestions[0];
-    const questionMessages: Message[] = [];
+        const channelQuestions = questions.filter((q) => q.channel === channelId);
+        if (channelQuestions.length === 0) {
+          console.warn("No questions found for channel", channelId);
+          return prev;
+        }
 
-    firstQuestion.context.forEach((ctx, idx) => {
-      questionMessages.push({
-        id: `${channelId}-context-${idx}`,
-        role: "agent",
-        author: ctx.agent,
-        content: ctx.message,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        const firstQuestion = channelQuestions[0];
+        const questionMessages: Message[] = [];
+
+        firstQuestion.context.forEach((ctx, idx) => {
+          questionMessages.push({
+            id: `${channelId}-context-${idx}`,
+            role: "agent",
+            author: ctx.agent,
+            content: ctx.message,
+            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          });
+        });
+
+        questionMessages.push({
+          id: `${channelId}-${firstQuestion.id}`,
+          role: "agent",
+          author: firstQuestion.context[0]?.agent || "Team",
+          content: firstQuestion.mainQuestion,
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          stimulus: firstQuestion.stimulus,
+        });
+
+        return { ...prev, [channelId]: questionMessages };
       });
-    });
-
-    questionMessages.push({
-      id: `${channelId}-${firstQuestion.id}`,
-      role: "agent",
-      author: firstQuestion.context[0]?.agent || "Team",
-      content: firstQuestion.mainQuestion,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      stimulus: firstQuestion.stimulus,
-    });
-
-    setChannelMessages((prev) => ({ ...prev, [channelId]: questionMessages }));
-  };
+    },
+    [],
+  );
 
   const initializeScenario = async (sessionData: SessionResponse) => {
     if (!sessionData?.job) {
@@ -543,13 +546,9 @@ export default function SimSession() {
   }, [scenario, submitted]);
 
   useEffect(() => {
-    if (!activeChannel || !scenario || (channelMessages[activeChannel]?.length ?? 0) > 0) {
-      return;
-    }
-
+    if (!activeChannel || !scenario) return;
     loadChannelQuestions(activeChannel, scenario.questions);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeChannel, scenario]);
+  }, [activeChannel, scenario, loadChannelQuestions]);
 
   const handleViolation = async (type: string) => {
     setViolations((prev) => prev + 1);
@@ -574,6 +573,22 @@ export default function SimSession() {
       variant: "destructive",
     });
   };
+
+  const handleChannelSelect = useCallback(
+    (channelId: string) => {
+      const channelMeta = channels.find((ch) => ch.id === channelId);
+      if (!channelMeta || channelMeta.locked) {
+        return;
+      }
+
+      if (scenario) {
+        loadChannelQuestions(channelId, scenario.questions);
+      }
+
+      setActiveChannel(channelId);
+    },
+    [channels, loadChannelQuestions, scenario],
+  );
 
   const handleSendResponse = async (rawResponse: string) => {
     if (!scenario || !activeChannel || submitted) return;
@@ -715,10 +730,7 @@ export default function SimSession() {
         [activeChannel]: [...(prev[activeChannel] || []), completionMessage],
       }));
 
-      setChannelProgress((prev) => ({
-        ...prev,
-        [activeChannel]: { ...prev[activeChannel], completed: true },
-      }));
+      let upcomingChannelId: string | null = null;
 
       setChannels((prev) => {
         const currentIndex = prev.findIndex((ch) => ch.id === activeChannel);
@@ -727,24 +739,16 @@ export default function SimSession() {
             return { ...ch, locked: false, completed: true };
           }
           if (idx === currentIndex + 1) {
+            upcomingChannelId = ch.id;
             return { ...ch, locked: false };
           }
           return ch;
         });
       });
 
-      setChannelProgress((prev) => ({
-        ...prev,
-        [activeChannel]: { ...prev[activeChannel], completed: true },
-      }));
-
-      const nextChannel =
-        channels.findIndex((ch) => ch.id === activeChannel) >= 0
-          ? channels[channels.findIndex((ch) => ch.id === activeChannel) + 1]
-          : null;
-
-      if (nextChannel) {
-        setActiveChannel(nextChannel.id);
+      if (upcomingChannelId && scenario) {
+        loadChannelQuestions(upcomingChannelId, scenario.questions);
+        setActiveChannel(upcomingChannelId);
       }
     }, 1000);
   };
@@ -821,7 +825,7 @@ export default function SimSession() {
       <Sidebar
         channels={channels}
         activeChannel={activeChannel}
-        onChannelSelect={setActiveChannel}
+        onChannelSelect={handleChannelSelect}
         timeRemaining={timeRemaining}
         violations={violations}
         onViolation={handleViolation}
