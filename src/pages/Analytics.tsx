@@ -28,12 +28,18 @@ const Analytics = () => {
   const [loading, setLoading] = useState(true);
   const [scores, setScores] = useState<AnalyticsScores | null>(null);
   const [simulation, setSimulation] = useState<any>(null);
+  const [generating, setGenerating] = useState(false);
 
   useEffect(() => {
     fetchAnalytics();
   }, [simulationId]);
 
   const fetchAnalytics = async () => {
+    if (!simulationId) {
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
 
@@ -47,43 +53,40 @@ const Analytics = () => {
       if (simError) throw simError;
       setSimulation(simData);
 
-      const storedReport = (simData.analysis_report || null) as AnalyticsScores | null;
-      if (storedReport) {
-        setScores(storedReport);
-        return;
+      let report = (simData.analysis_report || null) as AnalyticsScores | null;
+
+      if (!report) {
+        setGenerating(true);
+        const { data: analyticsData, error: analyticsError } =
+          await supabase.functions.invoke("analyze-simulation", {
+            body: { simulationId },
+          });
+
+        if (analyticsError) throw analyticsError;
+
+        report = (analyticsData?.report || null) as AnalyticsScores | null;
+        if (report) {
+          setSimulation((prev: any) =>
+            prev
+              ? {
+                  ...prev,
+                  analysis_report: report,
+                  analysis_generated_at: analyticsData?.analysis_generated_at ?? null,
+                }
+              : prev,
+          );
+        }
+        setGenerating(false);
       }
 
-      // Fetch responses
-      const { data: responses, error: responsesError } = await supabase
-        .from("simulation_responses")
-        .select("*")
-        .eq("simulation_id", simulationId)
-        .order("timestamp", { ascending: true });
-
-      if (responsesError) throw responsesError;
-
-      // Call edge function to analyze and score
-      const { data: analyticsData, error: analyticsError } = await supabase.functions.invoke(
-        "analyze-simulation",
-        {
-          body: {
-            simulation: simData,
-            responses: responses,
-          },
-        }
-      );
-
-      if (analyticsError) throw analyticsError;
-      setScores(analyticsData.scores);
-      setSimulation({
-        ...simData,
-        analysis_report: analyticsData.scores,
-        analysis_generated_at: new Date().toISOString(),
-      });
+      if (report) {
+        setScores(report);
+      }
     } catch (error: any) {
       console.error("Error fetching analytics:", error);
       toast.error("Failed to load analytics");
     } finally {
+      setGenerating(false);
       setLoading(false);
     }
   };
@@ -114,6 +117,13 @@ const Analytics = () => {
             </p>
           </div>
         </div>
+
+        {generating && !scores && (
+          <Card className="p-6 flex items-center gap-3 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>Generating analysis report…</span>
+          </Card>
+        )}
 
         {scores && (
           <>

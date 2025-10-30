@@ -562,8 +562,11 @@ export default function SimSession() {
 
   useEffect(() => {
     if (!activeChannel || !scenario) return;
-    loadChannelQuestions(activeChannel, scenario.questions);
-  }, [activeChannel, scenario, loadChannelQuestions]);
+    const hasMessages = (channelMessages[activeChannel] ?? []).length > 0;
+    if (!hasMessages) {
+      loadChannelQuestions(activeChannel, scenario.questions, true);
+    }
+  }, [activeChannel, scenario, channelMessages, loadChannelQuestions]);
 
   const handleViolation = async (type: string) => {
     setViolations((prev) => prev + 1);
@@ -728,24 +731,6 @@ export default function SimSession() {
     }
 
     setTimeout(() => {
-      const completionMessage: Message = {
-        id: `${activeChannel}-completion`,
-        role: "agent",
-        author: "System",
-        content: "🎉 Escalation resolved! Great work. Please proceed to the next channel.",
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      };
-
-      setChannelMessages((prev) => ({
-        ...prev,
-        [activeChannel]: [...(prev[activeChannel] || []), completionMessage],
-      }));
-
-      setChannelProgress((prev) => ({
-        ...prev,
-        [activeChannel]: { ...prev[activeChannel], completed: true },
-      }));
-
       let upcomingChannelId: string | null = null;
 
       setChannels((prev) => {
@@ -761,6 +746,31 @@ export default function SimSession() {
           return ch;
         });
       });
+
+      setChannelProgress((prev) => ({
+        ...prev,
+        [activeChannel]: { ...prev[activeChannel], completed: true },
+      }));
+
+      const completionText = upcomingChannelId
+        ? "🎉 Escalation resolved! Great work. Please proceed to the next channel."
+        : "🎉 Escalation resolved! This simulation is complete. You're all done.";
+
+      const completionMessage: Message = {
+        id: `${activeChannel}-completion`,
+        role: "agent",
+        author: "System",
+        content: completionText,
+        timestamp: new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      };
+
+      setChannelMessages((prev) => ({
+        ...prev,
+        [activeChannel]: [...(prev[activeChannel] || []), completionMessage],
+      }));
 
       if (upcomingChannelId) {
         setActiveChannel(upcomingChannelId);
@@ -780,6 +790,9 @@ export default function SimSession() {
       } catch (err) {
         console.error("Error submitting simulation:", err);
       }
+      supabase.functions
+        .invoke("analyze-simulation", { body: { simulationId } })
+        .catch((err) => console.error("Failed to queue analysis", err));
     }
 
     setSubmitted(true);
