@@ -240,6 +240,7 @@ export default function SimSession() {
   const [scenarioLoading, setScenarioLoading] = useState(false);
   const [scenario, setScenario] = useState<Scenario | null>(null);
   const [simulationId, setSimulationId] = useState<string | null>(null);
+  const [externalSimulationId, setExternalSimulationId] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
 
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -258,11 +259,12 @@ export default function SimSession() {
       (sessionData as Record<string, unknown>)?.simulation_id ??
       (sessionData as Record<string, unknown>)?.simulation?.id ??
       (sessionData.application as Record<string, unknown>)?.simulation_id ??
-      (sessionData.application as Record<string, unknown>)?.simulationId;
+      (sessionData.application as Record<string, unknown>)?.simulationId ??
+      externalSimulationId;
 
-    const externalSimulationId = externalSimulationIdRaw
+    const externalSimulationIdValue = externalSimulationIdRaw
       ? String(externalSimulationIdRaw)
-      : null;
+      : externalSimulationId ?? null;
 
     const persistencePayload = {
       job_description: sessionData.job?.description ?? "",
@@ -270,7 +272,7 @@ export default function SimSession() {
       generated_scenario: scenarioPayload,
       status: "in_progress",
       user_id: null,
-      external_simulation_id: externalSimulationId,
+      external_simulation_id: externalSimulationIdValue,
     };
 
     try {
@@ -285,12 +287,30 @@ export default function SimSession() {
         if (!insertResult.data?.id) throw new Error("Missing simulation id from Supabase response");
         const newSimulationId = String(insertResult.data.id);
         setSimulationId(newSimulationId);
+        if (!externalSimulationIdValue) {
+          setExternalSimulationId(newSimulationId);
+          await supabase
+            .from("simulations")
+            .update({ external_simulation_id: newSimulationId })
+            .eq("id", newSimulationId);
+        } else {
+          setExternalSimulationId(externalSimulationIdValue);
+        }
       } else {
         const { error: updateError } = await supabase
           .from("simulations")
           .update(persistencePayload)
           .eq("id", simulationId);
         if (updateError) throw updateError;
+        if (!externalSimulationIdValue) {
+          setExternalSimulationId(simulationId);
+          await supabase
+            .from("simulations")
+            .update({ external_simulation_id: simulationId })
+            .eq("id", simulationId);
+        } else {
+          setExternalSimulationId(externalSimulationIdValue);
+        }
       }
     } catch (dbErr) {
       throw dbErr;
@@ -315,7 +335,7 @@ export default function SimSession() {
     setError("");
     setSession(null);
 
-    const fetchSession = async () => {
+  const fetchSession = async () => {
       try {
         const path = token
           ? `resolve/${encodeURIComponent(token)}`
@@ -372,8 +392,14 @@ export default function SimSession() {
           return;
         }
 
-        if (isMounted) {
-          setSession(body);
+       if (isMounted) {
+         setSession(body);
+          const extId =
+            (body as Record<string, unknown>)?.simulationId ??
+            (body as Record<string, unknown>)?.simulation_id ??
+            (body.application as Record<string, unknown>)?.simulation_id ??
+            (body.application as Record<string, unknown>)?.simulationId;
+          if (extId) setExternalSimulationId(String(extId));
           setLoading(false);
         }
       } catch (err) {
@@ -594,6 +620,12 @@ const scenarioKey = useMemo(
     }
   }, [activeChannel, scenario, channelMessages, loadChannelQuestions]);
 
+  useEffect(() => {
+    if (!externalSimulationId && simulationId) {
+      setExternalSimulationId(simulationId);
+    }
+  }, [externalSimulationId, simulationId]);
+
   const handleViolation = async (type: string) => {
     setViolations((prev) => prev + 1);
 
@@ -602,6 +634,7 @@ const scenarioKey = useMemo(
         await supabase.from("simulation_violations").insert({
           simulation_id: simulationId,
           violation_type: type,
+          external_simulation_id: externalSimulationId ?? simulationId,
         });
       } catch (err) {
         console.error("Error logging violation:", err);
@@ -666,6 +699,7 @@ const scenarioKey = useMemo(
           simulation_id: simulationId,
           question_id: questionId,
           response,
+          external_simulation_id: externalSimulationId ?? simulationId,
         });
       } catch (err) {
         console.error("Error saving response:", err);

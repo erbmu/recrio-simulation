@@ -26,9 +26,8 @@ export default function IntroPage() {
     // (Optional) try full screen
     try { await document.documentElement.requestFullscreen?.(); } catch {}
 
-    // Go to the real simulation
     if (token) {
-      navigate(`/sim/${encodeURIComponent(token)}/run`, { replace: true });
+      navigate(`/sim/${encodeURIComponent(token)}/honor`, { replace: true });
     }
   }
 

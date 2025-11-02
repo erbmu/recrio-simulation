@@ -22,6 +22,7 @@ export type Database = {
           simulation_id: string | null
           timestamp: string | null
           user_id: string | null
+          external_simulation_id: string | null
         }
         Insert: {
           id?: string
@@ -30,6 +31,7 @@ export type Database = {
           simulation_id?: string | null
           timestamp?: string | null
           user_id?: string | null
+          external_simulation_id?: string | null
         }
         Update: {
           id?: string
@@ -38,6 +40,7 @@ export type Database = {
           simulation_id?: string | null
           timestamp?: string | null
           user_id?: string | null
+          external_simulation_id?: string | null
         }
         Relationships: [
           {
@@ -56,6 +59,7 @@ export type Database = {
           timestamp: string | null
           user_id: string | null
           violation_type: string
+          external_simulation_id: string | null
         }
         Insert: {
           id?: string
@@ -63,6 +67,7 @@ export type Database = {
           timestamp?: string | null
           user_id?: string | null
           violation_type: string
+          external_simulation_id?: string | null
         }
         Update: {
           id?: string
@@ -70,6 +75,7 @@ export type Database = {
           timestamp?: string | null
           user_id?: string | null
           violation_type?: string
+          external_simulation_id?: string | null
         }
         Relationships: [
           {

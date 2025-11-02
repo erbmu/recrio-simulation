@@ -9,9 +9,8 @@ import Simulation from "./pages/Simulation";
 import Analytics from "./pages/Analytics";
 import NotFound from "./pages/NotFound";
 import SimSession from "./pages/SimSession";
-
-// ✅ NEW intro page (you’ll add this file next)
 import IntroPage from "./pages/IntroPage";
+import HonorLock from "./pages/HonorLock";
 
 const queryClient = new QueryClient();
 
@@ -28,6 +27,7 @@ const App = () => (
 
           {/* ✅ New flow */}
           <Route path="/sim/:token" element={<IntroPage />} />
+          <Route path="/sim/:token/honor" element={<HonorLock />} />
           <Route path="/sim/:token/run" element={<SimSession />} />
 
           {/* Legacy/other views you already had */}
