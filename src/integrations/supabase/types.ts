@@ -132,6 +132,54 @@ export type Database = {
         }
         Relationships: []
       }
+      simulation_identity_checks: {
+        Row: {
+          id: string
+          external_simulation_id: string
+          selfie_path: string | null
+          id_path: string | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          external_simulation_id: string
+          selfie_path?: string | null
+          id_path?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          external_simulation_id?: string
+          selfie_path?: string | null
+          id_path?: string | null
+          created_at?: string | null
+        }
+        Relationships: []
+      }
+      simulation_identity_checks: {
+        Row: {
+          id: string
+          external_simulation_id: string
+          selfie_url: string | null
+          id_url: string | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          external_simulation_id: string
+          selfie_url?: string | null
+          id_url?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          external_simulation_id?: string
+          selfie_url?: string | null
+          id_url?: string | null
+          created_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

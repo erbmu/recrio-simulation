@@ -289,10 +289,13 @@ export default function SimSession() {
         setSimulationId(newSimulationId);
         if (!externalSimulationIdValue) {
           setExternalSimulationId(newSimulationId);
-          await supabase
+          const { error: extErr } = await supabase
             .from("simulations")
             .update({ external_simulation_id: newSimulationId })
             .eq("id", newSimulationId);
+          if (extErr) {
+            console.error("Failed to link external_simulation_id", extErr);
+          }
         } else {
           setExternalSimulationId(externalSimulationIdValue);
         }
@@ -304,10 +307,13 @@ export default function SimSession() {
         if (updateError) throw updateError;
         if (!externalSimulationIdValue) {
           setExternalSimulationId(simulationId);
-          await supabase
+          const { error: extErr } = await supabase
             .from("simulations")
             .update({ external_simulation_id: simulationId })
             .eq("id", simulationId);
+          if (extErr) {
+            console.error("Failed to link external_simulation_id", extErr);
+          }
         } else {
           setExternalSimulationId(externalSimulationIdValue);
         }
@@ -924,11 +930,13 @@ const scenarioKey = useMemo(
         <div className="border-b border-border bg-white/80 backdrop-blur px-8 py-6">
           <h1 className="text-2xl font-semibold">{job?.title ?? "Simulation"}</h1>
           {job?.description && (
-            <p className="mt-2 text-sm text-zinc-700 whitespace-pre-wrap">{job.description}</p>
+            <p className="mt-2 max-w-full overflow-hidden text-sm text-zinc-700 text-ellipsis whitespace-nowrap">
+              {job.description}
+            </p>
           )}
 
           {org?.company_description && (
-            <p className="mt-4 text-sm text-zinc-600 whitespace-pre-wrap">
+            <p className="mt-2 max-w-full overflow-hidden text-sm text-zinc-600 text-ellipsis whitespace-nowrap">
               {org.company_description}
             </p>
           )}

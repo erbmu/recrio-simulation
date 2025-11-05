@@ -3,6 +3,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 const captureFrame = (video: HTMLVideoElement) => {
   const canvas = document.createElement("canvas");
@@ -14,6 +16,20 @@ const captureFrame = (video: HTMLVideoElement) => {
   return canvas.toDataURL("image/png");
 };
 
+const BUCKET = "honor-lock";
+
+const dataUrlToBlob = (dataUrl: string): Blob => {
+  const arr = dataUrl.split(",");
+  const mime = arr[0].match(/:(.*?);/)?.[1] || "image/png";
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n);
+  }
+  return new Blob([u8arr], { type: mime });
+};
+
 export default function HonorLock() {
   const { token } = useParams<{ token?: string }>();
   const navigate = useNavigate();
@@ -23,6 +39,10 @@ export default function HonorLock() {
   const [idCapture, setIdCapture] = useState<string | null>(null);
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(true);
+  const [sessionLoading, setSessionLoading] = useState(true);
+  const [externalSimulationId, setExternalSimulationId] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     async function enableCamera() {
@@ -46,7 +66,53 @@ export default function HonorLock() {
     return () => {
       streamRef.current?.getTracks().forEach((track) => track.stop());
     };
-  }, []);
+  useEffect(() => {
+    let active = true;
+
+    const fetchSession = async () => {
+      if (!token) {
+        setSessionLoading(false);
+        return;
+      }
+
+      try {
+        const path = `resolve/${encodeURIComponent(token)}`;
+        const resp = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:4000"}/api/sim/public/${path}`, {
+          headers: { Accept: "application/json" },
+        });
+
+        if (!resp.ok) {
+          const msg = await resp.text();
+          throw new Error(msg || `Failed to resolve simulation (${resp.status})`);
+        }
+
+        const data = await resp.json();
+        const extId =
+          data?.simulationId ??
+          data?.simulation_id ??
+          data?.simulation?.id ??
+          data?.application?.simulation_id ??
+          data?.application?.simulationId;
+        if (active && extId) {
+          setExternalSimulationId(String(extId));
+        }
+      } catch (err) {
+        console.error("HonorLock resolve error", err);
+        if (active) {
+          setError("We couldn't verify your simulation link. Please try again or request a new link.");
+        }
+      } finally {
+        if (active) setSessionLoading(false);
+      }
+    };
+
+    fetchSession();
+
+    return () => {
+      active = false;
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, [token]);
 
   const handleCaptureSelfie = () => {
     if (!videoRef.current) return;
@@ -60,15 +126,52 @@ export default function HonorLock() {
     if (data) setIdCapture(data);
   };
 
-  const handleContinue = () => {
-    if (!token) return;
-    navigate(`/sim/${encodeURIComponent(token)}/run`, {
-      replace: true,
-      state: {
-        selfie,
-        idCapture,
-      },
-    });
+  const uploadImage = async (dataUrl: string, kind: "selfie" | "id") => {
+    const blob = dataUrlToBlob(dataUrl);
+    const fileName = `${externalSimulationId ?? token}-${kind}-${Date.now()}.png`;
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from(BUCKET)
+      .upload(fileName, blob, { contentType: "image/png", upsert: true });
+
+    if (uploadError) throw uploadError;
+
+    return uploadData?.path ?? fileName;
+  };
+
+  const handleContinue = async () => {
+    if (!token || !selfie || !idCapture) return;
+    if (!externalSimulationId) {
+      setError("We couldn’t resolve your simulation link. Please try again later.");
+      return;
+    }
+
+    setUploading(true);
+    setError("");
+
+    try {
+      const selfiePath = await uploadImage(selfie, "selfie");
+      const idPath = await uploadImage(idCapture, "id");
+
+      const { error: insertError } = await supabase.from("simulation_identity_checks").insert({
+        external_simulation_id: externalSimulationId,
+        selfie_path: selfiePath,
+        id_path: idPath,
+      });
+
+      if (insertError) throw insertError;
+
+      toast({
+        title: "Identity verified",
+        description: "Thank you. You can now begin the simulation.",
+      });
+
+      navigate(`/sim/${encodeURIComponent(token)}/run`, { replace: true });
+    } catch (err) {
+      console.error("HonorLock upload error", err);
+      setError("We couldn't save your verification images. Please try again.");
+    } finally {
+      setUploading(false);
+    }
   };
 
   return (
@@ -97,6 +200,12 @@ export default function HonorLock() {
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          {sessionLoading && (
+            <Alert variant="outline" className="border-white/10 bg-white/[0.05] text-white/70">
+              <AlertDescription>Verifying your simulation link…</AlertDescription>
             </Alert>
           )}
 
@@ -170,10 +279,10 @@ export default function HonorLock() {
             </p>
             <Button
               onClick={handleContinue}
-              disabled={!selfie || !idCapture}
+              disabled={!selfie || !idCapture || sessionLoading || uploading}
               className="inline-flex h-12 items-center justify-center rounded-full bg-white px-8 text-sm font-semibold tracking-wide text-neutral-900 transition duration-150 ease-in-out hover:bg-neutral-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950"
             >
-              Verify &amp; continue
+              {uploading ? "Saving…" : "Verify & continue"}
             </Button>
           </div>
         </main>
