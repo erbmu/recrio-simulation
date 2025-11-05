@@ -66,6 +66,8 @@ export default function HonorLock() {
     return () => {
       streamRef.current?.getTracks().forEach((track) => track.stop());
     };
+  }, []);
+
   useEffect(() => {
     let active = true;
 
