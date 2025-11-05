@@ -7,12 +7,30 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
 const captureFrame = (video: HTMLVideoElement) => {
+  const width = video.videoWidth || 640;
+  const height = video.videoHeight || 480;
   const canvas = document.createElement("canvas");
-  canvas.width = video.videoWidth || 640;
-  canvas.height = video.videoHeight || 480;
+  canvas.width = width;
+  canvas.height = height;
   const ctx = canvas.getContext("2d");
   if (!ctx) return null;
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  const drawFallback = () => {
+    ctx.fillStyle = "#0f172a";
+    ctx.fillRect(0, 0, width, height);
+  };
+
+  if (!video.srcObject) {
+    drawFallback();
+  } else {
+    try {
+      ctx.drawImage(video, 0, 0, width, height);
+    } catch (err) {
+      console.warn("HonorLock capture fallback", err);
+      drawFallback();
+    }
+  }
+
   return canvas.toDataURL("image/png");
 };
 

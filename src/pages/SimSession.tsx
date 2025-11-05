@@ -81,6 +81,15 @@ interface Scenario {
   questions: Question[];
 }
 
+const extractFirstLine = (value?: string | null) => {
+  if (!value) return undefined;
+  const firstLine = value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+  return firstLine ?? undefined;
+};
+
 const FALLBACK_SCENARIO: Scenario = {
   agents: [
     {
@@ -909,6 +918,8 @@ const scenarioKey = useMemo(
   }
 
   const { job, org, application } = session;
+  const jobDescriptionFirstLine = extractFirstLine(job?.description);
+  const companyDescriptionFirstLine = extractFirstLine(org?.company_description);
   const candidateName =
     application?.candidate?.name ?? application?.candidate_name ?? undefined;
   const candidateEmail =
@@ -929,15 +940,15 @@ const scenarioKey = useMemo(
       <div className="flex-1 flex flex-col">
         <div className="border-b border-border bg-white/80 backdrop-blur px-8 py-6">
           <h1 className="text-2xl font-semibold">{job?.title ?? "Simulation"}</h1>
-          {job?.description && (
+          {jobDescriptionFirstLine && (
             <p className="mt-2 max-w-full overflow-hidden text-sm text-zinc-700 text-ellipsis whitespace-nowrap">
-              {job.description}
+              {jobDescriptionFirstLine}
             </p>
           )}
 
-          {org?.company_description && (
-            <p className="mt-2 max-w-full overflow-hidden text-sm text-zinc-600 text-ellipsis whitespace-nowrap">
-              {org.company_description}
+          {companyDescriptionFirstLine && (
+            <p className="mt-1 max-w-full overflow-hidden text-sm text-zinc-600 text-ellipsis whitespace-nowrap">
+              {companyDescriptionFirstLine}
             </p>
           )}
 
