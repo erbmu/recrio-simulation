@@ -956,13 +956,13 @@ const scenarioKey = useMemo(
         <div className="border-b border-border bg-white/80 backdrop-blur px-8 py-6">
           <h1 className="text-2xl font-semibold">{job?.title ?? "Simulation"}</h1>
           {jobDescriptionFirstLine && (
-            <p className="mt-2 max-w-full overflow-hidden text-sm text-zinc-700 text-ellipsis whitespace-nowrap">
+            <p className="mt-2 w-full truncate text-sm text-zinc-700">
               {jobDescriptionFirstLine}
             </p>
           )}
 
           {companyDescriptionFirstLine && (
-            <p className="mt-1 max-w-full overflow-hidden text-sm text-zinc-600 text-ellipsis whitespace-nowrap">
+            <p className="mt-1 w-full truncate text-sm text-zinc-600">
               {companyDescriptionFirstLine}
             </p>
           )}
