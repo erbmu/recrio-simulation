@@ -82,6 +82,17 @@ const dataUrlToBlob = async (dataUrl: string): Promise<Blob> => {
   return new Blob([uints], { type: mime });
 };
 
+const logError = (label: string, error: unknown) => {
+  const message =
+    error instanceof Error
+      ? `${error.name}: ${error.message}`
+      : typeof error === "string"
+        ? error
+        : JSON.stringify(error);
+  console.error(`[HonorLock] ${label}`, message, error);
+  return message;
+};
+
 export default function HonorLock() {
   const { token } = useParams<{ token?: string }>();
   const navigate = useNavigate();
@@ -91,7 +102,7 @@ export default function HonorLock() {
   const [idCapture, setIdCapture] = useState<string | null>(null);
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(true);
-  const [sessionLoading, setSessionLoading] = useState(true);
+  const [sessionLoading, setSessionLoading] = useState(false);
   const [externalSimulationId, setExternalSimulationId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const { toast } = useToast();
@@ -120,53 +131,34 @@ export default function HonorLock() {
     };
   }, []);
 
-  useEffect(() => {
-    let active = true;
+  const resolveSimulation = async () => {
+    if (!token) return null;
 
-    const fetchSession = async () => {
-      if (!token) {
-        setSessionLoading(false);
-        return;
+    try {
+      const path = `resolve/${encodeURIComponent(token)}`;
+      const resp = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:4000"}/api/sim/public/${path}`, {
+        headers: { Accept: "application/json" },
+      });
+
+      if (!resp.ok) {
+        const msg = await resp.text();
+        throw new Error(msg || `Failed to resolve simulation (${resp.status})`);
       }
 
-      try {
-        const path = `resolve/${encodeURIComponent(token)}`;
-        const resp = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:4000"}/api/sim/public/${path}`, {
-          headers: { Accept: "application/json" },
-        });
+      const data = await resp.json();
+      const extId =
+        data?.simulationId ??
+        data?.simulation_id ??
+        data?.simulation?.id ??
+        data?.application?.simulation_id ??
+        data?.application?.simulationId;
 
-        if (!resp.ok) {
-          const msg = await resp.text();
-          throw new Error(msg || `Failed to resolve simulation (${resp.status})`);
-        }
-
-        const data = await resp.json();
-        const extId =
-          data?.simulationId ??
-          data?.simulation_id ??
-          data?.simulation?.id ??
-          data?.application?.simulation_id ??
-          data?.application?.simulationId;
-        if (active && extId) {
-          setExternalSimulationId(String(extId));
-        }
-      } catch (err) {
-        console.error("HonorLock resolve error", err);
-        if (active) {
-          setError("We couldn't verify your simulation link. Please try again or request a new link.");
-        }
-      } finally {
-        if (active) setSessionLoading(false);
-      }
-    };
-
-    fetchSession();
-
-    return () => {
-      active = false;
-      streamRef.current?.getTracks().forEach((track) => track.stop());
-    };
-  }, [token]);
+      return extId ? String(extId) : null;
+    } catch (err) {
+      logError("resolveSimulation", err);
+      throw err instanceof Error ? err : new Error(String(err));
+    }
+  };
 
   const handleCaptureSelfie = () => {
     if (!videoRef.current) return;
@@ -180,42 +172,59 @@ export default function HonorLock() {
     if (data) setIdCapture(data);
   };
 
-  const uploadImage = async (dataUrl: string, kind: "selfie" | "id") => {
+  const uploadImage = async (dataUrl: string, kind: "selfie" | "id", externalId?: string) => {
     let blob = await dataUrlToBlob(dataUrl);
     if (!blob || blob.size === 0) {
       blob = await dataUrlToBlob(FALLBACK_IMAGE_DATA_URL);
     }
-    const fileName = `${externalSimulationId ?? token}-${kind}-${Date.now()}.png`;
+    const targetId = externalId ?? externalSimulationId ?? token ?? "unknown";
+    const fileName = `${targetId}-${kind}-${Date.now()}.png`;
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from(BUCKET)
       .upload(fileName, blob, { contentType: "image/png", upsert: true });
 
-    if (uploadError) throw uploadError;
+    if (uploadError) {
+      logError(`storage.upload (${kind})`, uploadError);
+      throw uploadError;
+    }
 
     return uploadData?.path ?? fileName;
   };
 
   const handleContinue = async () => {
     if (!token || !selfie || !idCapture) return;
-    if (!externalSimulationId) {
-      setError("We couldn’t resolve your simulation link. Please try again later.");
-      return;
-    }
-
     setUploading(true);
     setError("");
 
     try {
-      const selfiePath = await uploadImage(selfie, "selfie");
-      const idPath = await uploadImage(idCapture, "id");
+      let simId = externalSimulationId;
+
+      if (!simId) {
+        setSessionLoading(true);
+        simId = await resolveSimulation();
+        if (simId) {
+          setExternalSimulationId(simId);
+        }
+        setSessionLoading(false);
+      }
+
+      if (!simId) {
+        throw new Error("We couldn’t resolve your simulation link. Please try again later.");
+      }
+
+      const selfiePath = await uploadImage(selfie, "selfie", simId);
+      const idPath = await uploadImage(idCapture, "id", simId);
 
       const { error: insertError } = await supabase.from("simulation_identity_checks").insert({
-        external_simulation_id: externalSimulationId,
+        external_simulation_id: simId,
         selfie_path: selfiePath,
         id_path: idPath,
       });
 
-      if (insertError) throw insertError;
+      if (insertError) {
+        logError("supabase.insert", insertError);
+        throw insertError;
+      }
 
       toast({
         title: "Identity verified",
@@ -224,10 +233,11 @@ export default function HonorLock() {
 
       navigate(`/sim/${encodeURIComponent(token)}/run`, { replace: true });
     } catch (err) {
-      console.error("HonorLock upload error", err);
-      setError("We couldn't save your verification images. Please try again.");
+      const message = logError("handleContinue", err);
+      setError(`We couldn't save your verification images. ${message ?? "Please try again."}`);
     } finally {
       setUploading(false);
+      setSessionLoading(false);
     }
   };
 
