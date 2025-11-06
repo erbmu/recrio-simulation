@@ -81,13 +81,20 @@ interface Scenario {
   questions: Question[];
 }
 
-const extractFirstLine = (value?: string | null) => {
+const toSingleLineSummary = (value?: string | null) => {
   if (!value) return undefined;
-  const firstLine = value
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find((line) => line.length > 0);
-  return firstLine ?? undefined;
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) return undefined;
+
+  const newlineIndex = normalized.indexOf("\n");
+  const base = newlineIndex >= 0 ? normalized.slice(0, newlineIndex).trim() : normalized;
+
+  const sentenceMatch = base.match(/^(.*?[.!?])(\s|$)/);
+  if (sentenceMatch?.[1]) {
+    return sentenceMatch[1].trim();
+  }
+
+  return base;
 };
 
 const FALLBACK_SCENARIO: Scenario = {
@@ -933,8 +940,8 @@ const scenarioKey = useMemo(
   }
 
   const { job, org, application } = session;
-  const jobDescriptionFirstLine = extractFirstLine(job?.description);
-  const companyDescriptionFirstLine = extractFirstLine(org?.company_description);
+  const jobDescriptionFirstLine = toSingleLineSummary(job?.description);
+  const companyDescriptionFirstLine = toSingleLineSummary(org?.company_description);
   const candidateName =
     application?.candidate?.name ?? application?.candidate_name ?? undefined;
   const candidateEmail =
