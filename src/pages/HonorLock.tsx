@@ -135,7 +135,7 @@ export default function HonorLock() {
     if (!token) return null;
 
     try {
-      const path = `resolve/${encodeURIComponent(token)}`;
+      const path = `resolve/${encodeURIComponent(token)}?stage=preview`;
       const resp = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:4000"}/api/sim/public/${path}`, {
         headers: { Accept: "application/json" },
       });

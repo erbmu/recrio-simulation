@@ -353,7 +353,7 @@ export default function SimSession() {
   const fetchSession = async () => {
       try {
         const path = token
-          ? `resolve/${encodeURIComponent(token)}`
+          ? `resolve/${encodeURIComponent(token)}?stage=preview`
           : `verify/${encodeURIComponent(payload ?? "")}`;
 
         const response = await fetch(`${API}/api/sim/public/${path}`, {
@@ -862,6 +862,20 @@ const scenarioKey = useMemo(
           .eq("id", simulationId);
       } catch (err) {
         console.error("Error submitting simulation:", err);
+      }
+      if (token) {
+        try {
+          const finalizeResp = await fetch(
+            `${API}/api/sim/public/resolve/${encodeURIComponent(token)}?stage=finalize`,
+            { headers: { Accept: "application/json" } },
+          );
+          if (!finalizeResp.ok) {
+            const text = await finalizeResp.text();
+            console.warn("[SimSession] finalize link failed", finalizeResp.status, text);
+          }
+        } catch (err) {
+          console.warn("[SimSession] finalize link request error", err);
+        }
       }
       supabase.functions
         .invoke("analyze-simulation", { body: { simulationId } })
