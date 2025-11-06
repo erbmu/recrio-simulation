@@ -6,6 +6,28 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
+const FALLBACK_IMAGE_DATA_URL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+kvp8AAAAASUVORK5CYII=";
+
+const buildFallbackImage = (width: number, height: number) => {
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return FALLBACK_IMAGE_DATA_URL;
+    const gradient = ctx.createLinearGradient(0, 0, width, height);
+    gradient.addColorStop(0, "#0f172a");
+    gradient.addColorStop(1, "#1e293b");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
+    return canvas.toDataURL("image/png");
+  } catch (err) {
+    console.warn("HonorLock fallback image generation failed", err);
+    return FALLBACK_IMAGE_DATA_URL;
+  }
+};
+
 const captureFrame = (video: HTMLVideoElement) => {
   const width = video.videoWidth || 640;
   const height = video.videoHeight || 480;
@@ -13,7 +35,7 @@ const captureFrame = (video: HTMLVideoElement) => {
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
+  if (!ctx) return buildFallbackImage(width, height);
 
   const drawFallback = () => {
     ctx.fillStyle = "#0f172a";
@@ -31,21 +53,33 @@ const captureFrame = (video: HTMLVideoElement) => {
     }
   }
 
-  return canvas.toDataURL("image/png");
+  const dataUrl = canvas.toDataURL("image/png");
+  return dataUrl && dataUrl !== "data:," ? dataUrl : buildFallbackImage(width, height);
 };
 
 const BUCKET = "honor-lock";
 
-const dataUrlToBlob = (dataUrl: string): Blob => {
-  const arr = dataUrl.split(",");
-  const mime = arr[0].match(/:(.*?);/)?.[1] || "image/png";
-  const bstr = atob(arr[1]);
-  let n = bstr.length;
-  const u8arr = new Uint8Array(n);
-  while (n--) {
-    u8arr[n] = bstr.charCodeAt(n);
+const dataUrlToBlob = async (dataUrl: string): Promise<Blob> => {
+  const normalized = dataUrl?.startsWith("data:image") ? dataUrl : FALLBACK_IMAGE_DATA_URL;
+  try {
+    const response = await fetch(normalized);
+    const blob = await response.blob();
+    if (blob.size > 0) {
+      return blob;
+    }
+  } catch (err) {
+    console.warn("HonorLock data URL fetch fallback", err);
   }
-  return new Blob([u8arr], { type: mime });
+
+  const arr = normalized.split(",");
+  const mime = arr[0]?.match(/:(.*?);/)?.[1] || "image/png";
+  const b64 = arr[1] ?? "";
+  const binary = atob(b64);
+  const uints = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    uints[i] = binary.charCodeAt(i);
+  }
+  return new Blob([uints], { type: mime });
 };
 
 export default function HonorLock() {
@@ -147,7 +181,10 @@ export default function HonorLock() {
   };
 
   const uploadImage = async (dataUrl: string, kind: "selfie" | "id") => {
-    const blob = dataUrlToBlob(dataUrl);
+    let blob = await dataUrlToBlob(dataUrl);
+    if (!blob || blob.size === 0) {
+      blob = await dataUrlToBlob(FALLBACK_IMAGE_DATA_URL);
+    }
     const fileName = `${externalSimulationId ?? token}-${kind}-${Date.now()}.png`;
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from(BUCKET)
@@ -268,7 +305,12 @@ export default function HonorLock() {
                   )}
                 </div>
                 {selfie && (
-                  <Button variant="ghost" size="sm" onClick={() => setSelfie(null)}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                    onClick={() => setSelfie(null)}
+                  >
                     Retake headshot
                   </Button>
                 )}
@@ -284,7 +326,12 @@ export default function HonorLock() {
                   )}
                 </div>
                 {idCapture && (
-                  <Button variant="ghost" size="sm" onClick={() => setIdCapture(null)}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                    onClick={() => setIdCapture(null)}
+                  >
                     Retake ID photo
                   </Button>
                 )}
