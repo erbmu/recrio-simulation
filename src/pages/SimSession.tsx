@@ -381,7 +381,8 @@ export default function SimSession() {
         const used =
           response.status === 403 ||
           response.status === 410 ||
-          (typeof body?.error === "string" && body.error.toLowerCase() === "used");
+          (typeof body?.error === "string" && body.error.toLowerCase() === "used") ||
+          body?.used === true;
 
         if (!response.ok || used) {
           if (!isMounted) return;

@@ -146,6 +146,9 @@ export default function HonorLock() {
       }
 
       const data = await resp.json();
+      if (data?.used) {
+        throw new Error("link_used");
+      }
       const extId =
         data?.simulationId ??
         data?.simulation_id ??
@@ -234,7 +237,13 @@ export default function HonorLock() {
       navigate(`/sim/${encodeURIComponent(token)}/run`, { replace: true });
     } catch (err) {
       const message = logError("handleContinue", err);
-      setError(`We couldn't save your verification images. ${message ?? "Please try again."}`);
+      if (message?.toLowerCase().includes("link_used")) {
+        setError(
+          "This link has already been used or has expired. Please contact your recruiter if you think this is a mistake.",
+        );
+      } else {
+        setError(`We couldn't save your verification images. ${message ?? "Please try again."}`);
+      }
     } finally {
       setUploading(false);
       setSessionLoading(false);
