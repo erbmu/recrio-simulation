@@ -1,0 +1,177 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model application_events {
+  id             BigInt       @id @default(autoincrement())
+  application_id BigInt
+  event_type     String
+  data           Json?
+  actor_user_id  BigInt?
+  created_at     DateTime     @default(now()) @db.Timestamptz(6)
+  applications   applications @relation(fields: [application_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "application_events_application_id_foreign")
+
+  @@index([application_id, created_at], map: "application_events_application_id_created_at_index")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model application_files {
+  id               BigInt       @id @default(autoincrement())
+  application_id   BigInt
+  kind             String
+  original_name    String
+  mime             String
+  size_bytes       BigInt
+  storage_provider String       @default("local")
+  storage_path     String
+  created_at       DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime     @default(now()) @db.Timestamptz(6)
+  applications     applications @relation(fields: [application_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "application_files_application_id_foreign")
+
+  @@unique([application_id, kind], map: "application_files_application_id_kind_unique")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model applications {
+  id                 BigInt               @id @default(autoincrement())
+  job_id             BigInt
+  candidate_name     String
+  candidate_email    String
+  phone              String?
+  city               String?
+  country            String?
+  linkedin_url       String?
+  portfolio_url      String?
+  years_experience   Decimal?             @db.Decimal(4, 1)
+  current_title      String?
+  salary_expectation String?
+  work_auth          String?
+  work_pref          String?
+  dob                DateTime?            @db.Date
+  relocate           Boolean              @default(false)
+  status             String               @default("applied")
+  source             String?              @default("public_apply")
+  ai_scores          Json?
+  ai_summary         String?
+  career_card        Json?
+  created_at         DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime             @default(now()) @db.Timestamptz(6)
+  deleted_at         DateTime?            @db.Timestamptz(6)
+  application_events application_events[]
+  application_files  application_files[]
+  jobs               jobs                 @relation(fields: [job_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "applications_job_id_foreign")
+  simulation_runs    simulation_runs[]
+
+  @@unique([job_id, candidate_email], map: "applications_job_id_candidate_email_unique")
+  @@index([created_at], map: "applications_created_at_index")
+  @@index([job_id, status], map: "applications_job_id_status_index")
+}
+
+model jobs {
+  id               BigInt         @id @default(autoincrement())
+  org_id           BigInt
+  title            String
+  slug             String         @unique
+  location         String         @default("Remote")
+  employment_type  String         @default("Full-time")
+  description      String?
+  is_published     Boolean        @default(false)
+  public_url_token String?        @unique(map: "jobs_public_url_token_unique")
+  published_at     DateTime?      @db.Timestamptz(6)
+  created_at       DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime       @default(now()) @db.Timestamptz(6)
+  qualifications   String?
+  applicants       Int?           @default(0)
+  work_type        String?
+  salary           String?
+  applications     applications[]
+  organizations    organizations  @relation(fields: [org_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "jobs_org_id_foreign")
+
+  @@unique([org_id, slug], map: "jobs_org_id_slug_unique")
+  @@index([org_id, is_published], map: "jobs_org_id_is_published_index")
+}
+
+model knex_migrations {
+  id             Int       @id @default(autoincrement())
+  name           String?   @db.VarChar(255)
+  batch          Int?
+  migration_time DateTime? @db.Timestamptz(6)
+}
+
+model knex_migrations_lock {
+  index     Int  @id @default(autoincrement())
+  is_locked Int?
+}
+
+model organizations {
+  id           BigInt         @id @default(autoincrement())
+  name         String
+  slug         String         @unique(map: "organizations_slug_unique")
+  is_active    Boolean        @default(true)
+  created_at   DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime       @default(now()) @db.Timestamptz(6)
+  deleted_at   DateTime?      @db.Timestamptz(6)
+  invite_codes invite_codes[]
+  jobs         jobs[]
+  users        users[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model simulation_runs {
+  id             BigInt       @id @default(autoincrement())
+  application_id BigInt
+  sim_type       String
+  status         String       @default("queued")
+  score          Decimal?     @db.Decimal(5, 2)
+  report         Json?
+  started_at     DateTime?    @db.Timestamptz(6)
+  ended_at       DateTime?    @db.Timestamptz(6)
+  created_at     DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime     @default(now()) @db.Timestamptz(6)
+  applications   applications @relation(fields: [application_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "simulation_runs_application_id_foreign")
+
+  @@index([application_id, status], map: "simulation_runs_application_id_status_index")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model users {
+  id            BigInt         @id @default(autoincrement())
+  org_id        BigInt
+  email         String         @unique(map: "users_email_unique")
+  name          String
+  password_hash String?
+  role          String         @default("recruiter")
+  is_active     Boolean        @default(true)
+  created_at    DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime       @default(now()) @db.Timestamptz(6)
+  invite_codes  invite_codes[]
+  organizations organizations  @relation(fields: [org_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "users_org_id_foreign")
+
+  @@unique([org_id, email], map: "users_org_id_email_unique")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model invite_codes {
+  id                 BigInt         @id @default(autoincrement())
+  code               String         @unique @db.VarChar(6)
+  org_id             BigInt?
+  role               String         @default("recruiter")
+  max_uses           Int            @default(1)
+  uses               Int            @default(0)
+  expires_at         DateTime?      @db.Timestamptz(6)
+  created_by_user_id BigInt?
+  created_at         DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime       @default(now()) @db.Timestamptz(6)
+  users              users?         @relation(fields: [created_by_user_id], references: [id], onUpdate: NoAction)
+  organizations      organizations? @relation(fields: [org_id], references: [id], onUpdate: NoAction)
+
+  @@index([expires_at])
+  @@index([uses, max_uses], map: "invite_codes_uses_idx")
+}
