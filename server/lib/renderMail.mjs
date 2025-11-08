@@ -18,26 +18,34 @@ const hasMailProvider = Boolean(API_KEY);
 
 const buildBody = ({ candidateName, candidateEmail, jobTitle, companyName, simulationUrl }) => {
   const name = candidateName?.trim() || "there";
-  const role = jobTitle?.trim() || "the open role";
+  const role = jobTitle?.trim() || "your role";
   const company = companyName?.trim() || "our team";
 
-  const subject = `Recrio simulation for ${company} (${role})`;
+  const subject = `Your Recrio Simulation Is Ready for ${company}`;
 
   const text = `Hi ${name},
 
-Thanks for your interest in ${company}! Please complete your Recrio simulation so we can keep things moving.
+Thank you for your interest in ${company} and for taking the next step with Recrio Simulations.
+We’re excited to learn more about you through our short, role-specific simulation (${role}).
 
-Simulation link: ${simulationUrl}
+Simulation Link:
+${simulationUrl}
 
-If you run into any issues, reply to this email or contact ${SUPPORT_EMAIL}.
+Please complete the simulation at your earliest convenience so we can move your application forward. Once submitted, our team will review your responses and get back to you shortly.
 
-— Recrio`;
+If you have any questions or encounter any issues, simply reply to this email or contact us at ${SUPPORT_EMAIL} — we’re happy to help.
+
+Best of luck,
+Team Recrio`;
 
   const html = `<p>Hi ${name},</p>
-<p>Thanks for your interest in ${company}! Please complete your Recrio simulation so we can keep things moving.</p>
-<p><strong>Simulation link:</strong> <a href="${simulationUrl}">${simulationUrl}</a></p>
-<p>If you run into any issues, reply to this email or contact <a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a>.</p>
-<p>— Recrio</p>`;
+<p>Thank you for your interest in ${company} and for taking the next step with Recrio Simulations. We’re excited to learn more about you through our short, role-specific simulation (${role}).</p>
+<p><strong>Simulation Link:</strong></p>
+<p><a href="${simulationUrl}" style="display:inline-block;padding:12px 24px;border-radius:999px;background:#111827;color:#f9fafb;text-decoration:none;font-weight:600;">Start Your Simulation</a></p>
+<p>If the button doesn’t work, copy and paste this URL: <a href="${simulationUrl}">${simulationUrl}</a></p>
+<p>Please complete the simulation at your earliest convenience so we can move your application forward. Once submitted, our team will review your responses and get back to you shortly.</p>
+<p>If you have any questions or encounter any issues, simply reply to this email or contact us at <a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a> — we’re happy to help.</p>
+<p>Best of luck,<br/>Team Recrio</p>`;
 
   return { subject, text, html, to: candidateEmail };
 };
