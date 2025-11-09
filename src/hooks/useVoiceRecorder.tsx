@@ -7,14 +7,36 @@ export const useVoiceRecorder = () => {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const mimeTypeRef = useRef<string>("audio/webm");
   const { toast } = useToast();
+
+  const pickSupportedMimeType = () => {
+    const candidates = [
+      "audio/webm;codecs=opus",
+      "audio/mp4;codecs=opus",
+      "audio/webm",
+      "audio/mp4",
+      "audio/ogg;codecs=opus",
+    ];
+
+    for (const type of candidates) {
+      // @ts-ignore MediaRecorder exists in supported browsers
+      if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported?.(type)) {
+        return type;
+      }
+    }
+    return undefined;
+  };
 
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
+      const supportedType = pickSupportedMimeType();
+      const options = supportedType ? { mimeType: supportedType } : undefined;
+      const mediaRecorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
+      mimeTypeRef.current = mediaRecorder.mimeType || supportedType || "audio/webm";
 
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) {
@@ -46,7 +68,8 @@ export const useVoiceRecorder = () => {
         setIsTranscribing(true);
 
         try {
-          const audioBlob = new Blob(chunksRef.current, { type: "audio/webm" });
+          const blobType = mimeTypeRef.current || chunksRef.current[0]?.type || "audio/webm";
+          const audioBlob = new Blob(chunksRef.current, { type: blobType });
           const reader = new FileReader();
           
           reader.onloadend = async () => {
@@ -67,7 +90,7 @@ export const useVoiceRecorder = () => {
               const { data, error } = await supabase.functions.invoke(
                 "speech-to-text",
                 {
-                  body: { audio: base64Audio },
+                  body: { audio: base64Audio, mimeType: blobType },
                 }
               );
 

@@ -41,11 +41,19 @@ serve(async (req) => {
   }
 
   try {
-    const { audio } = await req.json();
+    const { audio, mimeType } = await req.json();
     
     if (!audio) {
       throw new Error('No audio data provided');
     }
+    const contentType = typeof mimeType === "string" && mimeType.trim().length > 0 ? mimeType : "audio/webm";
+    const extension = contentType.includes("mp4")
+      ? "mp4"
+      : contentType.includes("ogg")
+        ? "ogg"
+        : contentType.includes("mpeg")
+          ? "mp3"
+          : "webm";
 
     const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
     if (!OPENAI_API_KEY) {
@@ -57,8 +65,8 @@ serve(async (req) => {
     const binaryAudio = processBase64Chunks(audio);
     
     const formData = new FormData();
-    const blob = new Blob([binaryAudio], { type: 'audio/webm' });
-    formData.append('file', blob, 'audio.webm');
+    const blob = new Blob([binaryAudio], { type: contentType });
+    formData.append('file', blob, `audio.${extension}`);
     formData.append('model', 'whisper-1');
 
     const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
