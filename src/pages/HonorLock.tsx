@@ -59,6 +59,15 @@ const captureFrame = (video: HTMLVideoElement) => {
 
 const BUCKET = "honor-lock";
 
+const CAMERA_CONSTRAINTS: MediaStreamConstraints = {
+  video: {
+    facingMode: "user",
+    width: { ideal: 1280 },
+    height: { ideal: 720 },
+  },
+  audio: false,
+};
+
 const dataUrlToBlob = async (dataUrl: string): Promise<Blob> => {
   const normalized = dataUrl?.startsWith("data:image") ? dataUrl : FALLBACK_IMAGE_DATA_URL;
   try {
@@ -108,25 +117,41 @@ export default function HonorLock() {
   const { toast } = useToast();
 
   useEffect(() => {
+    let active = true;
+
     async function enableCamera() {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setError("Camera access is not supported in this browser. Please switch to a modern browser.");
+        setLoading(false);
+        return;
+      }
+
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        const stream = await navigator.mediaDevices.getUserMedia(CAMERA_CONSTRAINTS);
+        if (!active) return;
         streamRef.current = stream;
         if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
+          const videoElement = videoRef.current;
+          videoElement.srcObject = stream;
+          const playPromise = videoElement.play();
+          if (playPromise?.catch) {
+            playPromise.catch((err) => console.warn("[HonorLock] video play blocked", err));
+          }
         }
-        setLoading(false);
       } catch (err) {
         console.error("Camera access failed", err);
-        setError("We couldn't access your camera. Please allow camera access to continue.");
-        setLoading(false);
+        if (active) {
+          setError("We couldn't access your camera. Please allow camera access to continue.");
+        }
+      } finally {
+        if (active) setLoading(false);
       }
     }
 
     enableCamera();
 
     return () => {
+      active = false;
       streamRef.current?.getTracks().forEach((track) => track.stop());
     };
   }, []);
@@ -295,7 +320,7 @@ export default function HonorLock() {
                       Initializing camera…
                     </div>
                   ) : (
-                    <video ref={videoRef} className="h-full w-full object-cover" playsInline muted />
+                    <video ref={videoRef} className="h-full w-full object-cover" playsInline autoPlay muted />
                   )}
                 </div>
                 <p className="text-xs text-white/50">
