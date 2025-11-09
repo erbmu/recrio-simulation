@@ -119,6 +119,30 @@ export default function HonorLock() {
   useEffect(() => {
     let active = true;
 
+    const attachStreamToVideo = (stream: MediaStream) => {
+      const tryAttach = () => {
+        const videoElement = videoRef.current;
+        if (!videoElement) {
+          if (active) requestAnimationFrame(tryAttach);
+          return;
+        }
+
+        if ("srcObject" in videoElement) {
+          videoElement.srcObject = stream;
+        } else {
+          // @ts-expect-error fallback for older browsers
+          videoElement.src = window.URL.createObjectURL(stream);
+        }
+
+        const playPromise = videoElement.play();
+        if (playPromise?.catch) {
+          playPromise.catch((err) => console.warn("[HonorLock] video play blocked", err));
+        }
+      };
+
+      tryAttach();
+    };
+
     async function enableCamera() {
       if (!navigator.mediaDevices?.getUserMedia) {
         setError("Camera access is not supported in this browser. Please switch to a modern browser.");
@@ -128,16 +152,12 @@ export default function HonorLock() {
 
       try {
         const stream = await navigator.mediaDevices.getUserMedia(CAMERA_CONSTRAINTS);
-        if (!active) return;
-        streamRef.current = stream;
-        if (videoRef.current) {
-          const videoElement = videoRef.current;
-          videoElement.srcObject = stream;
-          const playPromise = videoElement.play();
-          if (playPromise?.catch) {
-            playPromise.catch((err) => console.warn("[HonorLock] video play blocked", err));
-          }
+        if (!active) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
         }
+        streamRef.current = stream;
+        attachStreamToVideo(stream);
       } catch (err) {
         console.error("Camera access failed", err);
         if (active) {
