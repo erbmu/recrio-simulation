@@ -6,7 +6,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const sanitizeBase64 = (value: string) => value.replace(/^data:[^;]+;base64,/, "").replace(/[\r\n\s]/g, "");
+const sanitizeBase64 = (value: string) =>
+  value.replace(/^data:[^;]+;base64,/, "").replace(/[\r\n\s]/g, "");
 
 const decodeBase64ToUint8Array = (base64: string) => {
   const binary = atob(base64);
@@ -27,7 +28,7 @@ const extensionFromMime = (mime: string) => {
 
 async function transcribeWithGemini(apiKey: string, audioBase64: string, mimeType: string) {
   const url =
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite-preview-02-05:generateContent" +
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent" +
     `?key=${encodeURIComponent(apiKey)}`;
 
   const response = await fetch(url, {
@@ -59,6 +60,7 @@ async function transcribeWithGemini(apiKey: string, audioBase64: string, mimeTyp
   }
 
   const json = await response.json();
+  console.log("[speech-to-text] Gemini response", JSON.stringify(json?.candidates?.[0], null, 2));
   const candidate = json?.candidates?.find((c: unknown) => c?.content?.parts?.length);
   const text =
     candidate?.content?.parts
@@ -132,7 +134,7 @@ serve(async (req) => {
         transcript = await transcribeWithGemini(GEMINI_API_KEY, cleanedAudio, contentType);
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
-        console.error("Gemini transcription failed:", lastError.message);
+    console.error("[speech-to-text] Gemini transcription failed:", lastError.message);
       }
     }
 
@@ -141,7 +143,7 @@ serve(async (req) => {
         transcript = await transcribeWithWhisper(OPENAI_API_KEY, cleanedAudio, contentType);
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
-        console.error("OpenAI transcription failed:", lastError.message);
+        console.error("[speech-to-text] OpenAI transcription failed:", lastError.message);
       }
     }
 
@@ -153,7 +155,7 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
-    console.error("Error in speech-to-text:", error);
+    console.error("[speech-to-text] Error:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return new Response(JSON.stringify({ error: errorMessage }), {
       status: 500,
