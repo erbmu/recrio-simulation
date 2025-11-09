@@ -18,7 +18,7 @@ try {
   console.warn("[sim.routes] Resend not installed – email disabled.", e?.message || e);
 }
 
-const SIM_BASE_URL = process.env.SIM_BASE_URL || "https://<your-sim>.onrender.com";
+const SIM_BASE_URL = process.env.SIM_BASE_URL || "https://sim.recrio-ai.com";
 
 const SendSimLinkSchema = z.object({
   applicationId: z.string(),

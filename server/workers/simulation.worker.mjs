@@ -3,7 +3,7 @@ import crypto from "crypto";
 import { db } from "./db.mjs";
 import { sendSimulationInviteEmail } from "../lib/renderMail.mjs";
 
-const SIM_PUBLIC_BASE = process.env.SIM_PUBLIC_BASE || "http://localhost:5173";
+const SIM_PUBLIC_BASE = process.env.SIM_PUBLIC_BASE || "https://sim.recrio-ai.com";
 const SIM_TOKEN_SECRET = process.env.SIM_TOKEN_SECRET || "2TIODI8er8DejevRGe52F29Xj5vMDRc_ggO3ta-N1aAVA5TBxCT2b-7Bq3rB5dwr";
 
 function sign(payload) {
@@ -40,7 +40,7 @@ export async function makeSimulationForApplication(applicationId) {
   const payload = String(row.application_id);
   const sig = sign(payload);
   const token = `${payload}.${sig}`;
-  const url = `${SIM_PUBLIC_BASE.replace(/\/+$/, "")}/s/${token}`;
+  const url = `${SIM_PUBLIC_BASE.replace(/\/+$/, "")}/sim/${token}`;
 
   // 4) persist in simulations table
   await db("simulations")
