@@ -5,6 +5,7 @@ import { db } from "../db.mjs";
 
 const r = Router();
 const SIM_TOKEN_SECRET = process.env.SIM_TOKEN_SECRET || "dev-secret-change-me";
+const RESOLVE_LOG_PREFIX = "[sim.resolve]";
 
 const escapeLike = (value) => {
   if (!value) return value;
@@ -47,12 +48,15 @@ r.get("/api/sim/public/resolve/:token", async (req, res, next) => {
     let errorResult = null;
     const stage = String(req.query.stage || "preview").toLowerCase();
     const markFinal = stage === "finalize";
+    console.log(`${RESOLVE_LOG_PREFIX} incoming token=${token} stage=${stage}`);
 
     await db.transaction(async (trx) => {
+      let lookupMode = "direct";
       let row = await buildResolveQuery(trx).where("sim.public_token", token).first();
 
       if (!row && token.includes("-")) {
         const likePattern = `%${escapeLike(token)}%`;
+        lookupMode = "url_fallback";
         row = await buildResolveQuery(trx)
           .whereRaw(`sim.url ILIKE ? ESCAPE '\\\\'`, [likePattern])
           .first();
@@ -61,20 +65,26 @@ r.get("/api/sim/public/resolve/:token", async (req, res, next) => {
           await trx("simulations")
             .where({ id: row.sim_id })
             .update({ public_token: token, updated_at: trx.fn.now() });
+          console.warn(`${RESOLVE_LOG_PREFIX} fallback matched token=${token} sim_id=${row.sim_id}`);
         }
       }
 
       if (!row) {
+        console.warn(`${RESOLVE_LOG_PREFIX} not_found token=${token} lookup=${lookupMode}`);
         errorResult = { status: 404, body: { error: "not_found" } };
         return;
       }
+      console.log(`${RESOLVE_LOG_PREFIX} resolved token=${token} sim_id=${row.sim_id} lookup=${lookupMode}`);
 
       if (row.status !== "ready") {
         if (row.status === "pending") {
+          console.warn(`${RESOLVE_LOG_PREFIX} pending token=${token} sim_id=${row.sim_id}`);
           errorResult = { status: 409, body: { error: "pending" } };
         } else if (row.status === "error") {
+          console.warn(`${RESOLVE_LOG_PREFIX} error_state token=${token} sim_id=${row.sim_id}`);
           errorResult = { status: 404, body: { error: "error" } };
         } else {
+          console.warn(`${RESOLVE_LOG_PREFIX} invalid_status token=${token} sim_id=${row.sim_id} status=${row.status}`);
           errorResult = { status: 409, body: { error: row.status } };
         }
         return;
@@ -99,9 +109,11 @@ r.get("/api/sim/public/resolve/:token", async (req, res, next) => {
           });
 
         if (!updated) {
+          console.warn(`${RESOLVE_LOG_PREFIX} finalize_used token=${token} sim_id=${row.sim_id}`);
           errorResult = { status: 410, body: { error: "used" } };
           return;
         }
+        console.log(`${RESOLVE_LOG_PREFIX} finalize_marked token=${token} sim_id=${row.sim_id}`);
       }
 
       responsePayload = {
@@ -130,10 +142,12 @@ r.get("/api/sim/public/resolve/:token", async (req, res, next) => {
       return res.status(errorResult.status).json(errorResult.body);
     }
     if (!responsePayload) {
+      console.error(`${RESOLVE_LOG_PREFIX} missing_payload token=${token}`);
       return res.status(500).json({ error: "resolve_failed" });
     }
     return res.json(responsePayload);
   } catch (e) {
+    console.error(`${RESOLVE_LOG_PREFIX} exception token=${req.params?.token}`, e);
     next(e);
   }
 });
