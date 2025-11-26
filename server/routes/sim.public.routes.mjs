@@ -6,6 +6,33 @@ import { db } from "../db.mjs";
 const r = Router();
 const SIM_TOKEN_SECRET = process.env.SIM_TOKEN_SECRET || "dev-secret-change-me";
 
+const escapeLike = (value) => {
+  if (!value) return value;
+  return value.replace(/[\\%_]/g, (match) => `\\${match}`);
+};
+
+const buildResolveQuery = (trx) =>
+  trx("simulations as sim")
+    .forUpdate()
+    .join("applications as ap", "ap.id", "sim.application_id")
+    .join("jobs as j", "j.id", "ap.job_id")
+    .join("organizations as o", "o.id", "j.org_id")
+    .select(
+      "sim.id as sim_id",
+      "sim.public_token",
+      "sim.external_simulation_id",
+      "sim.status",
+      "sim.access_count",
+      "ap.id as application_id",
+      "ap.candidate_name",
+      "ap.candidate_email",
+      "j.id as job_id",
+      "j.title as job_title",
+      "j.description as job_description",
+      "j.qualifications",
+      "o.company_description"
+    );
+
 function sign(payload) {
   return crypto.createHmac("sha256", SIM_TOKEN_SECRET).update(payload).digest("base64url");
 }
@@ -22,28 +49,20 @@ r.get("/api/sim/public/resolve/:token", async (req, res, next) => {
     const markFinal = stage === "finalize";
 
     await db.transaction(async (trx) => {
-      const row = await trx("simulations as sim")
-        .forUpdate()
-        .join("applications as ap", "ap.id", "sim.application_id")
-        .join("jobs as j", "j.id", "ap.job_id")
-        .join("organizations as o", "o.id", "j.org_id")
-        .where("sim.public_token", token)
-        .select(
-          "sim.id as sim_id",
-          "sim.public_token",
-          "sim.external_simulation_id",
-          "sim.status",
-          "sim.access_count",
-          "ap.id as application_id",
-          "ap.candidate_name",
-          "ap.candidate_email",
-          "j.id as job_id",
-          "j.title as job_title",
-          "j.description as job_description",
-          "j.qualifications",
-          "o.company_description"
-        )
-        .first();
+      let row = await buildResolveQuery(trx).where("sim.public_token", token).first();
+
+      if (!row && token.includes("-")) {
+        const likePattern = `%${escapeLike(token)}%`;
+        row = await buildResolveQuery(trx)
+          .whereRaw(`sim.url ILIKE ? ESCAPE '\\\\'`, [likePattern])
+          .first();
+
+        if (row) {
+          await trx("simulations")
+            .where({ id: row.sim_id })
+            .update({ public_token: token, updated_at: trx.fn.now() });
+        }
+      }
 
       if (!row) {
         errorResult = { status: 404, body: { error: "not_found" } };
