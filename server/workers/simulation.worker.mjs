@@ -32,37 +32,50 @@ export async function makeSimulationForApplication(applicationId) {
 
   if (!row) throw new Error("application_not_found");
 
+  const existingSimulation = await db("simulations")
+    .where({ application_id: row.application_id })
+    .first(["id", "public_token", "url", "status"]);
+
+  let token = existingSimulation?.public_token?.trim() || null;
+  let url = existingSimulation?.url?.trim() || null;
+
   // 2) build your prompt(s) here, run any AI generation you need (optional)
   //    For MVP, you can skip and just produce a URL.
 
-  // 3) sign a short payload the sim frontend can present back for validation
-  //    keep it minimal (only what you need to decrypt/lookup):
-  const payload = String(row.application_id);
-  const sig = sign(payload);
-  const token = `${payload}.${sig}`;
-  const url = `${SIM_PUBLIC_BASE.replace(/\/+$/, "")}/sim/${token}`;
+  if (!token || !url || existingSimulation?.status !== "ready") {
+    // 3) sign a short payload the sim frontend can present back for validation
+    //    keep it minimal (only what you need to decrypt/lookup):
+    const payload = String(row.application_id);
+    const sig = sign(payload);
+    token = `${payload}.${sig}`;
+    url = `${SIM_PUBLIC_BASE.replace(/\/+$/, "")}/sim/${token}`;
 
-  // 4) persist in simulations table
-  await db("simulations")
-    .insert({
-      application_id: row.application_id,
-      status: "ready",
-      url,
-      public_token: token,
-      attempts: 1,
-      updated_at: db.fn.now(),
-    })
-    .onConflict("application_id")
-    .merge({
-      status: "ready",
-      url,
-      public_token: token,
-      attempts: db.raw("attempts + 1"),
-      access_count: 0,
-      first_accessed_at: null,
-      last_accessed_at: null,
-      updated_at: db.fn.now(),
-    });
+    // 4) persist in simulations table
+    await db("simulations")
+      .insert({
+        application_id: row.application_id,
+        status: "ready",
+        url,
+        public_token: token,
+        attempts: 1,
+        updated_at: db.fn.now(),
+      })
+      .onConflict("application_id")
+      .merge({
+        status: "ready",
+        url,
+        public_token: token,
+        attempts: db.raw("attempts + 1"),
+        access_count: 0,
+        first_accessed_at: null,
+        last_accessed_at: null,
+        updated_at: db.fn.now(),
+      });
+  }
+
+  if (!url || !token) {
+    throw new Error("simulation_token_missing");
+  }
 
   if (row.candidate_email) {
     try {
