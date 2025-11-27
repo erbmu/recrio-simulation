@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+
+const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
 export const useVoiceRecorder = () => {
   const [isRecording, setIsRecording] = useState(false);
@@ -87,15 +88,19 @@ export const useVoiceRecorder = () => {
             }
 
             try {
-              const { data, error } = await supabase.functions.invoke(
-                "speech-to-text",
-                {
-                  body: { audio: base64Audio, mimeType: blobType },
-                }
-              );
-
-              if (error) throw error;
-
+              const response = await fetch(`${API}/api/sim/runtime/speech-to-text`, {
+                method: "POST",
+                headers: {
+                  Accept: "application/json",
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ audio: base64Audio, mimeType: blobType }),
+              });
+              if (!response.ok) {
+                const text = await response.text().catch(() => "");
+                throw new Error(text || `Transcription failed (${response.status})`);
+              }
+              const data = await response.json();
               setIsTranscribing(false);
               resolve(data.text);
             } catch (error) {

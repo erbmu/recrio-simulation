@@ -70,6 +70,25 @@ r.get("/api/sim/public/resolve/:token", async (req, res, next) => {
       }
 
       if (!row) {
+        const match = token.match(/^(\d+)[-_]/);
+        if (match) {
+          lookupMode = "application_fallback";
+          const appId = Number(match[1]);
+          if (Number.isInteger(appId) && appId > 0) {
+            row = await buildResolveQuery(trx).where("ap.id", appId).first();
+            if (row) {
+              await trx("simulations")
+                .where({ id: row.sim_id })
+                .update({ public_token: token, updated_at: trx.fn.now() });
+              console.warn(
+                `${RESOLVE_LOG_PREFIX} application fallback matched token=${token} sim_id=${row.sim_id} application_id=${appId}`
+              );
+            }
+          }
+        }
+      }
+
+      if (!row) {
         console.warn(`${RESOLVE_LOG_PREFIX} not_found token=${token} lookup=${lookupMode}`);
         errorResult = { status: 404, body: { error: "not_found" } };
         return;

@@ -9,6 +9,9 @@ import authRoutes from "./routes/auth.mjs";
 import adminRoutes from "./routes/admin.mjs";
 import simPublicRoutes from "./routes/sim.public.routes.mjs";
 import simRoutes from "./routes/sim.routes.mjs";
+import simRuntimeRoutes from "./routes/sim.runtime.routes.mjs";
+import proctoringRoutes from "./routes/proctoring.routes.mjs";
+import path from "path";
 
 // ATS APIs
 import atsJobsRoutes from "./routes/ats/jobs.routes.mjs";
@@ -42,6 +45,14 @@ app.use(orgRoutes);
 
 app.use(simPublicRoutes);
 app.use(simRoutes);
+app.use(simRuntimeRoutes);
+app.use(proctoringRoutes);
+app.use(
+  "/uploads",
+  express.static(path.resolve("server/uploads"), {
+    fallthrough: true,
+  })
+);
 
 
 // VERY VERBOSE per-request logger

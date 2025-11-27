@@ -3,8 +3,26 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Sidebar } from "@/components/simulation/Sidebar";
 import { ChatArea, Message } from "@/components/simulation/ChatArea";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
+
+const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
+const runtimeUrl = (path: string) => `${API}/api/sim/runtime/${path}`;
+
+async function postRuntime(path: string, payload: Record<string, unknown>) {
+  const resp = await fetch(runtimeUrl(path), {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(text || `Runtime request failed (${resp.status})`);
+  }
+  return resp.json();
+}
 
 interface Channel {
   id: string;
@@ -40,6 +58,7 @@ const Simulation = () => {
   const [timeRemaining, setTimeRemaining] = useState("30:00");
   const [scenario, setScenario] = useState<any>(null);
   const [channelProgress, setChannelProgress] = useState<Record<string, { questionIndex: number; followUpIndex: number; completed: boolean }>>({});
+  const [externalSimulationId, setExternalSimulationId] = useState<string | null>(null);
 
   useEffect(() => {
     if (simulationId) {
@@ -89,16 +108,20 @@ const Simulation = () => {
 
   const loadSimulation = async () => {
     try {
-      const { data, error } = await supabase
-        .from('simulations')
-        .select('*')
-        .eq('id', simulationId)
-        .single();
+      const resp = await fetch(runtimeUrl(`run/${encodeURIComponent(simulationId)}`), {
+        headers: { Accept: "application/json" },
+      });
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => "");
+        throw new Error(text || "Failed to load simulation");
+      }
+      const json = await resp.json();
+      const data = json?.run;
+      setExternalSimulationId(data?.external_simulation_id ?? null);
 
-      if (error) throw error;
-
-      const generatedScenario = data.generated_scenario as any;
+      const generatedScenario = data?.generated_scenario as any;
       setScenario(generatedScenario);
+      setViolations(Number(data?.violations_count || 0));
 
       // Setup channels
       const channelData = (generatedScenario.channels || []).map((ch: any) => ({
@@ -172,10 +195,12 @@ const Simulation = () => {
     setViolations((prev) => prev + 1);
     
     try {
-      await supabase.from('simulation_violations').insert({
-        simulation_id: simulationId,
-        violation_type: type,
-      });
+      if (externalSimulationId) {
+        await postRuntime("violation", {
+          external_simulation_id: externalSimulationId,
+          violation_type: type,
+        });
+      }
     } catch (error) {
       console.error('Error logging violation:', error);
     }
@@ -219,108 +244,12 @@ const Simulation = () => {
       : currentQuestion.followUps?.[progress.followUpIndex - 1]?.id;
 
     try {
-      await supabase.from('simulation_responses').insert({
-        simulation_id: simulationId,
-        question_id: questionId,
-        response,
-      });
-
-      // Move to next follow-up or question
-      if (currentQuestion.followUps && progress.followUpIndex < currentQuestion.followUps.length) {
-        const followUp = currentQuestion.followUps[progress.followUpIndex];
-        setTimeout(() => {
-          const followUpMessage: Message = {
-            id: `${activeChannel}-${followUp.id}`,
-            role: "agent",
-            author: followUp.agent,
-            content: followUp.question,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          };
-          
-          setChannelMessages(prev => ({
-            ...prev,
-            [activeChannel]: [...(prev[activeChannel] || []), followUpMessage]
-          }));
-          
-          setChannelProgress(prev => ({
-            ...prev,
-            [activeChannel]: { ...prev[activeChannel], followUpIndex: prev[activeChannel].followUpIndex + 1 }
-          }));
-        }, 1000);
-      } else if (progress.questionIndex < channelQuestions.length - 1) {
-        // Move to next question with context dialogue
-        setTimeout(() => {
-          const nextQuestion = channelQuestions[progress.questionIndex + 1];
-          
-          // Add context messages from team members first
-          let cumulativeDelay = 0;
-          nextQuestion.context.forEach((ctx, idx) => {
-            setTimeout(() => {
-              const contextMessage: Message = {
-                id: `${activeChannel}-context-${progress.questionIndex + 1}-${idx}`,
-                role: "agent",
-                author: ctx.agent,
-                content: ctx.message,
-                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              };
-              
-              setChannelMessages(prev => ({
-                ...prev,
-                [activeChannel]: [...(prev[activeChannel] || []), contextMessage]
-              }));
-            }, cumulativeDelay);
-            
-            cumulativeDelay += 1500;
-          });
-          
-          // Then add the main question
-          setTimeout(() => {
-            const questionMessage: Message = {
-              id: `${activeChannel}-${nextQuestion.id}`,
-              role: "agent",
-              author: nextQuestion.context[0]?.agent || "Team",
-              content: nextQuestion.mainQuestion,
-              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              stimulus: nextQuestion.stimulus,
-            };
-            
-            setChannelMessages(prev => ({
-              ...prev,
-              [activeChannel]: [...(prev[activeChannel] || []), questionMessage]
-            }));
-            
-            setChannelProgress(prev => ({
-              ...prev,
-              [activeChannel]: { questionIndex: prev[activeChannel].questionIndex + 1, followUpIndex: 0, completed: false }
-            }));
-          }, cumulativeDelay + 1000);
-        }, 1000);
-      } else {
-        // Channel completed
-        setTimeout(() => {
-          const completionMessage: Message = {
-            id: `${activeChannel}-completion`,
-            role: "agent",
-            author: "System",
-            content: "🎉 Escalation resolved! Great work. Please proceed to the next channel.",
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          };
-          
-          setChannelMessages(prev => ({
-            ...prev,
-            [activeChannel]: [...(prev[activeChannel] || []), completionMessage]
-          }));
-          
-          setChannelProgress(prev => ({
-            ...prev,
-            [activeChannel]: { ...prev[activeChannel], completed: true }
-          }));
-          
-          // Update channel to show completion
-          setChannels(prev => prev.map(ch => 
-            ch.id === activeChannel ? { ...ch, locked: true } : ch
-          ));
-        }, 1000);
+      if (externalSimulationId) {
+        await postRuntime("response", {
+          external_simulation_id: externalSimulationId,
+          question_id: questionId,
+          response,
+        });
       }
     } catch (error) {
       console.error('Error saving response:', error);
@@ -329,15 +258,111 @@ const Simulation = () => {
         description: "Failed to save response",
         variant: "destructive",
       });
+      return;
+    }
+
+    if (currentQuestion.followUps && progress.followUpIndex < currentQuestion.followUps.length) {
+      const followUp = currentQuestion.followUps[progress.followUpIndex];
+      setTimeout(() => {
+        const followUpMessage: Message = {
+          id: `${activeChannel}-${followUp.id}`,
+          role: "agent",
+          author: followUp.agent,
+          content: followUp.question,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        };
+        
+        setChannelMessages(prev => ({
+          ...prev,
+          [activeChannel]: [...(prev[activeChannel] || []), followUpMessage]
+        }));
+        
+        setChannelProgress(prev => ({
+          ...prev,
+          [activeChannel]: { ...prev[activeChannel], followUpIndex: prev[activeChannel].followUpIndex + 1 }
+        }));
+      }, 1000);
+    } else if (progress.questionIndex < channelQuestions.length - 1) {
+      setTimeout(() => {
+        const nextQuestion = channelQuestions[progress.questionIndex + 1];
+        
+        let cumulativeDelay = 0;
+        nextQuestion.context.forEach((ctx, idx) => {
+          setTimeout(() => {
+            const contextMessage: Message = {
+              id: `${activeChannel}-context-${progress.questionIndex + 1}-${idx}`,
+              role: "agent",
+              author: ctx.agent,
+              content: ctx.message,
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            };
+            
+            setChannelMessages(prev => ({
+              ...prev,
+              [activeChannel]: [...(prev[activeChannel] || []), contextMessage]
+            }));
+          }, cumulativeDelay);
+          
+          cumulativeDelay += 1500;
+        });
+        
+        setTimeout(() => {
+          const questionMessage: Message = {
+            id: `${activeChannel}-${nextQuestion.id}`,
+            role: "agent",
+            author: nextQuestion.context[0]?.agent || "Team",
+            content: nextQuestion.mainQuestion,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            stimulus: nextQuestion.stimulus,
+          };
+          
+          setChannelMessages(prev => ({
+            ...prev,
+            [activeChannel]: [...(prev[activeChannel] || []), questionMessage]
+          }));
+          
+          setChannelProgress(prev => ({
+            ...prev,
+            [activeChannel]: { questionIndex: prev[activeChannel].questionIndex + 1, followUpIndex: 0, completed: false }
+          }));
+        }, cumulativeDelay + 1000);
+      }, 1000);
+    } else {
+      setTimeout(() => {
+        const completionMessage: Message = {
+          id: `${activeChannel}-completion`,
+          role: "agent",
+          author: "System",
+          content: "🎉 Escalation resolved! Great work. Please proceed to the next channel.",
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        };
+        
+        setChannelMessages(prev => ({
+          ...prev,
+          [activeChannel]: [...(prev[activeChannel] || []), completionMessage]
+        }));
+        
+        setChannelProgress(prev => ({
+          ...prev,
+          [activeChannel]: { ...prev[activeChannel], completed: true }
+        }));
+        
+        setChannels(prev => prev.map(ch => 
+          ch.id === activeChannel ? { ...ch, locked: true } : ch
+        ));
+      }, 1000);
     }
   };
 
   const handleSubmitSimulation = async () => {
     try {
-      await supabase
-        .from('simulations')
-        .update({ status: 'submitted', completed_at: new Date().toISOString() })
-        .eq('id', simulationId);
+      if (externalSimulationId) {
+        await postRuntime("run", {
+          external_simulation_id: externalSimulationId,
+          status: "submitted",
+          completed_at: new Date().toISOString(),
+        });
+      }
 
       toast({
         title: "Simulation submitted",

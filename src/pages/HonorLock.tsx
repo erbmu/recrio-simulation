@@ -3,8 +3,10 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+
+const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
+const runtimeUrl = (path: string) => `${API}/api/sim/runtime/${path}`;
 
 const FALLBACK_IMAGE_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+kvp8AAAAASUVORK5CYII=";
@@ -56,8 +58,6 @@ const captureFrame = (video: HTMLVideoElement) => {
   const dataUrl = canvas.toDataURL("image/png");
   return dataUrl && dataUrl !== "data:," ? dataUrl : buildFallbackImage(width, height);
 };
-
-const BUCKET = "honor-lock";
 
 const CAMERA_CONSTRAINTS: MediaStreamConstraints = {
   video: {
@@ -220,25 +220,6 @@ export default function HonorLock() {
     if (data) setIdCapture(data);
   };
 
-  const uploadImage = async (dataUrl: string, kind: "selfie" | "id", externalId?: string) => {
-    let blob = await dataUrlToBlob(dataUrl);
-    if (!blob || blob.size === 0) {
-      blob = await dataUrlToBlob(FALLBACK_IMAGE_DATA_URL);
-    }
-    const targetId = externalId ?? externalSimulationId ?? token ?? "unknown";
-    const fileName = `${targetId}-${kind}-${Date.now()}.png`;
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from(BUCKET)
-      .upload(fileName, blob, { contentType: "image/png", upsert: true });
-
-    if (uploadError) {
-      logError(`storage.upload (${kind})`, uploadError);
-      throw uploadError;
-    }
-
-    return uploadData?.path ?? fileName;
-  };
-
   const handleContinue = async () => {
     if (!token || !selfie || !idCapture) return;
     setUploading(true);
@@ -260,18 +241,22 @@ export default function HonorLock() {
         throw new Error("We couldn’t resolve your simulation link. Please try again later.");
       }
 
-      const selfiePath = await uploadImage(selfie, "selfie", simId);
-      const idPath = await uploadImage(idCapture, "id", simId);
-
-      const { error: insertError } = await supabase.from("simulation_identity_checks").insert({
-        external_simulation_id: simId,
-        selfie_path: selfiePath,
-        id_path: idPath,
+      const resp = await fetch(runtimeUrl("identity"), {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          external_simulation_id: simId,
+          selfie_data: selfie,
+          id_data: idCapture,
+        }),
       });
 
-      if (insertError) {
-        logError("supabase.insert", insertError);
-        throw insertError;
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => "");
+        throw new Error(text || "Failed to persist identity verification.");
       }
 
       toast({

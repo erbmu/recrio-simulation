@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
+
+const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
 const VOICE_MAP: Record<string, string> = {
   "Sarah Chen": "nova",
@@ -42,12 +43,20 @@ export const useTextToSpeech = () => {
       setCurrentSpeaker(author);
 
       const voice = VOICE_MAP[author] || "alloy";
-      
-      const { data, error } = await supabase.functions.invoke("text-to-speech", {
-        body: { text, voice },
-      });
 
-      if (error) throw error;
+      const response = await fetch(`${API}/api/sim/runtime/text-to-speech`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ text, voice }),
+      });
+      if (!response.ok) {
+        const textErr = await response.text().catch(() => "");
+        throw new Error(textErr || `TTS request failed (${response.status})`);
+      }
+      const data = await response.json();
 
       // Create audio element and play
       const audio = new Audio(`data:audio/mp3;base64,${data.audioContent}`);

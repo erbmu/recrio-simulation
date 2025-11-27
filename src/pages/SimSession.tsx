@@ -4,12 +4,35 @@ import { useParams } from "react-router-dom";
 import { Sidebar } from "@/components/simulation/Sidebar";
 import { ChatArea, Message } from "@/components/simulation/ChatArea";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
 const USED_LINK_MESSAGE =
   "This link has already been used or has expired. Please contact your recruiter if you think this is a mistake.";
+const runtimeUrl = (path: string) => `${API}/api/sim/runtime/${path}`;
+
+async function postRuntime(path: string, payload: Record<string, unknown>) {
+  const resp = await fetch(runtimeUrl(path), {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(text || `Runtime request failed (${resp.status})`);
+  }
+  return resp.json();
+}
+
+async function fetchScenario(jobDescription: string, companyDescription: string) {
+  const resp = await postRuntime("scenario", { jobDescription, companyDescription });
+  const scenario = resp?.scenario;
+  if (!scenario) throw new Error("Scenario generator returned an unexpected response.");
+  return scenario as Scenario;
+}
 
 interface Candidate {
   name?: string;
@@ -292,47 +315,25 @@ export default function SimSession() {
     };
 
     try {
-      if (!simulationId) {
-        const insertResult = await supabase
-          .from("simulations")
-          .insert(persistencePayload)
-          .select("id")
-          .single();
+      const externalId = externalSimulationIdValue ? String(externalSimulationIdValue) : null;
+      if (!externalId) {
+        throw new Error("Missing simulation identifier from resolve payload.");
+      }
+      setExternalSimulationId(externalId);
 
-        if (insertResult.error) throw insertResult.error;
-        if (!insertResult.data?.id) throw new Error("Missing simulation id from Supabase response");
-        const newSimulationId = String(insertResult.data.id);
-        setSimulationId(newSimulationId);
-        if (!externalSimulationIdValue) {
-          setExternalSimulationId(newSimulationId);
-          const { error: extErr } = await supabase
-            .from("simulations")
-            .update({ external_simulation_id: newSimulationId })
-            .eq("id", newSimulationId);
-          if (extErr) {
-            console.error("Failed to link external_simulation_id", extErr);
-          }
-        } else {
-          setExternalSimulationId(externalSimulationIdValue);
-        }
-      } else {
-        const { error: updateError } = await supabase
-          .from("simulations")
-          .update(persistencePayload)
-          .eq("id", simulationId);
-        if (updateError) throw updateError;
-        if (!externalSimulationIdValue) {
-          setExternalSimulationId(simulationId);
-          const { error: extErr } = await supabase
-            .from("simulations")
-            .update({ external_simulation_id: simulationId })
-            .eq("id", simulationId);
-          if (extErr) {
-            console.error("Failed to link external_simulation_id", extErr);
-          }
-        } else {
-          setExternalSimulationId(externalSimulationIdValue);
-        }
+      const runPayload = {
+        external_simulation_id: externalId,
+        job_description: sessionData.job?.description ?? "",
+        company_description: sessionData.org?.company_description ?? "",
+        generated_scenario: scenarioPayload,
+        status: "in_progress",
+        user_id: null,
+      };
+
+      const runResp = await postRuntime("run", runPayload);
+      const newRunId = runResp?.run?.id ? String(runResp.run.id) : null;
+      if (newRunId) {
+        setSimulationId(newRunId);
       }
     } catch (dbErr) {
       throw dbErr;
@@ -554,19 +555,11 @@ const scenarioKey = useMemo(
 
     setScenarioLoading(true);
     try {
-      const { data: functionData, error: functionError } = await supabase.functions.invoke(
-        "generate-simulation",
-        {
-          body: {
-            jobDescription: sessionData.job?.description ?? "",
-            companyDescription: sessionData.org?.company_description ?? "",
-          },
-        },
+      const rawScenario = await fetchScenario(
+        sessionData.job?.description ?? "",
+        sessionData.org?.company_description ?? "",
       );
 
-      if (functionError) throw functionError;
-
-      const rawScenario = functionData?.scenario ?? functionData;
       if (!isValidScenario(rawScenario)) {
         throw new Error("Simulation generator returned an unexpected response.");
       }
@@ -643,21 +636,14 @@ const scenarioKey = useMemo(
     }
   }, [activeChannel, scenario, channelMessages, loadChannelQuestions]);
 
-  useEffect(() => {
-    if (!externalSimulationId && simulationId) {
-      setExternalSimulationId(simulationId);
-    }
-  }, [externalSimulationId, simulationId]);
-
   const handleViolation = async (type: string) => {
     setViolations((prev) => prev + 1);
 
-    if (simulationId) {
+    if (externalSimulationId) {
       try {
-        await supabase.from("simulation_violations").insert({
-          simulation_id: simulationId,
+        await postRuntime("violation", {
+          external_simulation_id: externalSimulationId,
           violation_type: type,
-          external_simulation_id: externalSimulationId ?? simulationId,
         });
       } catch (err) {
         console.error("Error logging violation:", err);
@@ -716,13 +702,12 @@ const scenarioKey = useMemo(
         ? currentQuestion.id
         : currentQuestion.followUps?.[progress.followUpIndex - 1]?.id;
 
-    if (simulationId) {
+    if (externalSimulationId) {
       try {
-        await supabase.from("simulation_responses").insert({
-          simulation_id: simulationId,
+        await postRuntime("response", {
+          external_simulation_id: externalSimulationId,
           question_id: questionId,
           response,
-          external_simulation_id: externalSimulationId ?? simulationId,
         });
       } catch (err) {
         console.error("Error saving response:", err);
@@ -862,12 +847,13 @@ const scenarioKey = useMemo(
   const handleSubmitSimulation = async () => {
     if (submitted) return;
 
-    if (simulationId) {
+    if (externalSimulationId) {
       try {
-        await supabase
-          .from("simulations")
-          .update({ status: "submitted", completed_at: new Date().toISOString() })
-          .eq("id", simulationId);
+        await postRuntime("run", {
+          external_simulation_id: externalSimulationId,
+          status: "submitted",
+          completed_at: new Date().toISOString(),
+        });
       } catch (err) {
         console.error("Error submitting simulation:", err);
       }
@@ -885,9 +871,9 @@ const scenarioKey = useMemo(
           console.warn("[SimSession] finalize link request error", err);
         }
       }
-      supabase.functions
-        .invoke("analyze-simulation", { body: { simulationId } })
-        .catch((err) => console.error("Failed to queue analysis", err));
+      postRuntime("analyze", { simulationId: externalSimulationId }).catch((err) =>
+        console.error("Failed to queue analysis", err),
+      );
     }
 
     setSubmitted(true);

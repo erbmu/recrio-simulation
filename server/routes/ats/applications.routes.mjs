@@ -13,14 +13,14 @@ import {
   fetchSimulationResponsesAndViolations,
   fetchIdentityCheck,
   computeOverallFromReport,
-} from "../../lib/supabaseAnalysis.mjs";
+} from "../../lib/simulationAnalysis.mjs";
 
 /* ------------------------------------------------------------------------- */
 /* Simulation Edge Function config                                            */
 /* ------------------------------------------------------------------------- */
-const SIM_FUNCTION_URL = process.env.SIM_FUNCTION_URL || "";            // e.g. https://<proj>.functions.supabase.co/create-from-ats
-const SIM_ANON = process.env.SIM_SUPABASE_ANON_KEY || "";               // your VITE_SUPABASE_PUBLISHABLE_KEY
-const SIM_SECRET = process.env.SIM_WEBHOOK_SECRET || "";                // same secret you used in curl test
+const SIM_FUNCTION_URL = "";
+const SIM_ANON = "";
+const SIM_SECRET = "";
 
 /* Optional queue – safe to be missing locally */
 let simQueue = null;
@@ -33,10 +33,10 @@ const r = Router();
 
 r.get("/__sim_env", (_req, res) => {
   res.json({
-    SIM_FUNCTION_URL: !!process.env.SIM_FUNCTION_URL,
-    SIM_SUPABASE_ANON_KEY: !!process.env.SIM_SUPABASE_ANON_KEY,
-    SIM_WEBHOOK_SECRET: !!process.env.SIM_WEBHOOK_SECRET,
-    function_url_preview: (process.env.SIM_FUNCTION_URL || "").slice(0, 80)
+    SIM_FUNCTION_URL: false,
+    SIM_SUPABASE_ANON_KEY: false,
+    SIM_WEBHOOK_SECRET: false,
+    function_url_preview: ""
   });
 });
 

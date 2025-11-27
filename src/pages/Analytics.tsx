@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { ScoreCard } from "@/components/analytics/ScoreCard";
 import { OverallScore } from "@/components/analytics/OverallScore";
+import { useMemo } from "react";
+
+const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
+const runtimeUrl = (path: string) => `${API}/api/sim/runtime/${path}`;
 
 interface AnalyticsScores {
   overallStartupReadinessIndex: number;
@@ -44,26 +47,34 @@ const Analytics = () => {
       setLoading(true);
 
       // Fetch simulation data
-      const { data: simData, error: simError } = await supabase
-        .from("simulations")
-        .select("*")
-        .eq("id", simulationId)
-        .single();
+      const runResp = await fetch(runtimeUrl(`run/${encodeURIComponent(simulationId)}`), {
+        headers: { Accept: "application/json" },
+      });
+      if (!runResp.ok) {
+        const text = await runResp.text().catch(() => "");
+        throw new Error(text || "Failed to load simulation");
+      }
+      const runJson = await runResp.json();
+      const runData = runJson?.run;
+      setSimulation(runData);
 
-      if (simError) throw simError;
-      setSimulation(simData);
-
-      let report = (simData.analysis_report || null) as AnalyticsScores | null;
+      let report = (runData?.analysis_report || null) as AnalyticsScores | null;
 
       if (!report) {
         setGenerating(true);
-        const { data: analyticsData, error: analyticsError } =
-          await supabase.functions.invoke("analyze-simulation", {
-            body: { simulationId },
-          });
-
-        if (analyticsError) throw analyticsError;
-
+        const analyzeResp = await fetch(runtimeUrl("analyze"), {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ simulationId }),
+        });
+        if (!analyzeResp.ok) {
+          const text = await analyzeResp.text().catch(() => "");
+          throw new Error(text || "Failed to generate analysis");
+        }
+        const analyticsData = await analyzeResp.json();
         report = (analyticsData?.report || null) as AnalyticsScores | null;
         if (report) {
           setSimulation((prev: any) =>
