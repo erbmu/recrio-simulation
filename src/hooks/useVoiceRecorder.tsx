@@ -1,7 +1,6 @@
 import { useState, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
-
-const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
+import { buildApiUrl } from "@/lib/api";
 
 export const useVoiceRecorder = () => {
   const [isRecording, setIsRecording] = useState(false);
@@ -88,7 +87,7 @@ export const useVoiceRecorder = () => {
             }
 
             try {
-              const response = await fetch(`${API}/api/sim/runtime/speech-to-text`, {
+              const response = await fetch(buildApiUrl("/api/sim/runtime/speech-to-text"), {
                 method: "POST",
                 headers: {
                   Accept: "application/json",

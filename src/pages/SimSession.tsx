@@ -5,11 +5,11 @@ import { Sidebar } from "@/components/simulation/Sidebar";
 import { ChatArea, Message } from "@/components/simulation/ChatArea";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
+import { buildApiUrl } from "@/lib/api";
 
-const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
 const USED_LINK_MESSAGE =
   "This link has already been used or has expired. Please contact your recruiter if you think this is a mistake.";
-const runtimeUrl = (path: string) => `${API}/api/sim/runtime/${path}`;
+const runtimeUrl = (path: string) => buildApiUrl(`/api/sim/runtime/${path}`);
 
 async function postRuntime(path: string, payload: Record<string, unknown>) {
   const resp = await fetch(runtimeUrl(path), {
@@ -364,7 +364,7 @@ export default function SimSession() {
           ? `resolve/${encodeURIComponent(token)}?stage=preview`
           : `verify/${encodeURIComponent(payload ?? "")}`;
 
-        const response = await fetch(`${API}/api/sim/public/${path}`, {
+        const response = await fetch(buildApiUrl(`/api/sim/public/${path}`), {
           headers: {
             Accept: "application/json",
           },
@@ -860,7 +860,7 @@ const scenarioKey = useMemo(
       if (token) {
         try {
           const finalizeResp = await fetch(
-            `${API}/api/sim/public/resolve/${encodeURIComponent(token)}?stage=finalize`,
+            buildApiUrl(`/api/sim/public/resolve/${encodeURIComponent(token)}?stage=finalize`),
             { headers: { Accept: "application/json" } },
           );
           if (!finalizeResp.ok) {

@@ -1,6 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-
-const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
+import { buildApiUrl } from "@/lib/api";
 
 const VOICE_MAP: Record<string, string> = {
   "Sarah Chen": "nova",
@@ -44,7 +43,7 @@ export const useTextToSpeech = () => {
 
       const voice = VOICE_MAP[author] || "alloy";
 
-      const response = await fetch(`${API}/api/sim/runtime/text-to-speech`, {
+      const response = await fetch(buildApiUrl("/api/sim/runtime/text-to-speech"), {
         method: "POST",
         headers: {
           Accept: "application/json",

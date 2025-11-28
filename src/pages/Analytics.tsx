@@ -7,9 +7,9 @@ import { toast } from "sonner";
 import { ScoreCard } from "@/components/analytics/ScoreCard";
 import { OverallScore } from "@/components/analytics/OverallScore";
 import { useMemo } from "react";
+import { buildApiUrl } from "@/lib/api";
 
-const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
-const runtimeUrl = (path: string) => `${API}/api/sim/runtime/${path}`;
+const runtimeUrl = (path: string) => buildApiUrl(`/api/sim/runtime/${path}`);
 
 interface AnalyticsScores {
   overallStartupReadinessIndex: number;

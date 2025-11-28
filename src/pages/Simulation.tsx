@@ -4,9 +4,9 @@ import { Sidebar } from "@/components/simulation/Sidebar";
 import { ChatArea, Message } from "@/components/simulation/ChatArea";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
+import { buildApiUrl } from "@/lib/api";
 
-const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
-const runtimeUrl = (path: string) => `${API}/api/sim/runtime/${path}`;
+const runtimeUrl = (path: string) => buildApiUrl(`/api/sim/runtime/${path}`);
 
 async function postRuntime(path: string, payload: Record<string, unknown>) {
   const resp = await fetch(runtimeUrl(path), {

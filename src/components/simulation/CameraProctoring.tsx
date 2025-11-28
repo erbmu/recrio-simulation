@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Camera, CameraOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { buildApiUrl } from "@/lib/api";
 
 interface CameraProctoringProps {
   onViolation: (type: string) => void;
@@ -72,20 +73,16 @@ export const CameraProctoring = ({ onViolation, simulationId }: CameraProctoring
     
     // Send to backend for analysis
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-proctoring`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          },
-          body: JSON.stringify({
-            image: imageData.split(",")[1], // Remove data:image/jpeg;base64, prefix
-            simulationId,
-          }),
-        }
-      );
+      const response = await fetch(buildApiUrl("/api/sim/runtime/analyze-proctoring"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          image: imageData.split(",")[1],
+          simulationId,
+        }),
+      });
 
       if (!response.ok) {
         console.error("Proctoring analysis failed");

@@ -4,9 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
+import { buildApiUrl } from "@/lib/api";
 
-const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
-const runtimeUrl = (path: string) => `${API}/api/sim/runtime/${path}`;
+const runtimeUrl = (path: string) => buildApiUrl(`/api/sim/runtime/${path}`);
 
 const FALLBACK_IMAGE_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+kvp8AAAAASUVORK5CYII=";
@@ -66,29 +66,6 @@ const CAMERA_CONSTRAINTS: MediaStreamConstraints = {
     height: { ideal: 720 },
   },
   audio: false,
-};
-
-const dataUrlToBlob = async (dataUrl: string): Promise<Blob> => {
-  const normalized = dataUrl?.startsWith("data:image") ? dataUrl : FALLBACK_IMAGE_DATA_URL;
-  try {
-    const response = await fetch(normalized);
-    const blob = await response.blob();
-    if (blob.size > 0) {
-      return blob;
-    }
-  } catch (err) {
-    console.warn("HonorLock data URL fetch fallback", err);
-  }
-
-  const arr = normalized.split(",");
-  const mime = arr[0]?.match(/:(.*?);/)?.[1] || "image/png";
-  const b64 = arr[1] ?? "";
-  const binary = atob(b64);
-  const uints = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    uints[i] = binary.charCodeAt(i);
-  }
-  return new Blob([uints], { type: mime });
 };
 
 const logError = (label: string, error: unknown) => {
@@ -181,7 +158,7 @@ export default function HonorLock() {
 
     try {
       const path = `resolve/${encodeURIComponent(token)}?stage=preview`;
-      const resp = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:4000"}/api/sim/public/${path}`, {
+      const resp = await fetch(buildApiUrl(`/api/sim/public/${path}`), {
         headers: { Accept: "application/json" },
       });
 
