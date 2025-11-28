@@ -28,8 +28,8 @@ const isProd = process.env.NODE_ENV === "production";
 app.disable("x-powered-by");
 app.use("/api/orgs/public", orgPublicRoutes);  
 
-app.use(express.json({ limit: "1mb" }));
-app.use(express.urlencoded({ extended: false, limit: "50kb" }));
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: false, limit: "10mb" }));
 app.use(
   helmet({
     contentSecurityPolicy: false,
