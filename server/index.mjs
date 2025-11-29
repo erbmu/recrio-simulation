@@ -26,7 +26,7 @@ app.use(cors({ origin: true, credentials: false }));
 const isProd = process.env.NODE_ENV === "production";
 
 app.disable("x-powered-by");
-app.use("/api/orgs/public", orgPublicRoutes);  
+app.use("/api/orgs/public", orgPublicRoutes);
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: false, limit: "10mb" }));
@@ -41,19 +41,12 @@ app.use(
 );
 app.use(morgan(isProd ? "combined" : "tiny"));
 
+app.use("/api/honor-lock", honorLockRoutes);
+
 app.use(orgRoutes);
 
 app.use(simPublicRoutes);
 app.use(simRoutes);
-app.use("/api/sim/runtime", simRuntimeRoutes);
-app.use("/api/honor-lock", honorLockRoutes);
-app.use(
-  "/uploads",
-  express.static(path.resolve("server/uploads"), {
-    fallthrough: true,
-  })
-);
-
 
 // VERY VERBOSE per-request logger
 app.use((req, res, next) => {
