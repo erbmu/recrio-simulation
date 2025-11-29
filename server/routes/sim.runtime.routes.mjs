@@ -390,10 +390,7 @@ const IdentitySchema = z.object({
   id_data: optionalString.optional(),
 });
 
-r.post("/identity", async (req, res) => identityHandler(req, res));
-r.post("/api/sim/runtime/identity", async (req, res) => identityHandler(req, res));
-
-async function identityHandler(req, res) {
+export async function identityHandler(req, res) {
   try {
     const parsed = IdentitySchema.safeParse(req.body);
     if (!parsed.success) {
@@ -438,6 +435,9 @@ async function identityHandler(req, res) {
     return res.status(500).json({ error: "internal_error" });
   }
 }
+
+r.post("/identity", identityHandler);
+r.post("/api/sim/runtime/identity", identityHandler);
 
 const AnalyzeSchema = z.object({
   simulationId: z.string().min(1),
