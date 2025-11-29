@@ -9,7 +9,8 @@ import authRoutes from "./routes/auth.mjs";
 import adminRoutes from "./routes/admin.mjs";
 import simPublicRoutes from "./routes/sim.public.routes.mjs";
 import simRoutes from "./routes/sim.routes.mjs";
-import simRuntimeRoutes, { identityHandler } from "./routes/sim.runtime.routes.mjs";
+import simRuntimeRoutes from "./routes/sim.runtime.routes.mjs";
+import runtimeIdentityRouter from "./routes/runtime.identity.route.mjs";
 import path from "path";
 
 // ATS APIs
@@ -45,14 +46,7 @@ app.use(orgRoutes);
 app.use(simPublicRoutes);
 app.use(simRoutes);
 app.use("/api/sim/runtime", simRuntimeRoutes);
-app.post("/api/sim/runtime/identity", identityHandler);
-app.use((req, res, next) => {
-  if (req.method === "POST" && req.originalUrl && req.originalUrl.replace(/\/+$/, "") === "/api/sim/runtime/identity") {
-    console.warn("[sim.runtime] fallback identity handler invoked");
-    return identityHandler(req, res);
-  }
-  return next();
-});
+app.use(runtimeIdentityRouter);
 app.use(
   "/uploads",
   express.static(path.resolve("server/uploads"), {
