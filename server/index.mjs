@@ -46,6 +46,13 @@ app.use(simPublicRoutes);
 app.use(simRoutes);
 app.use("/api/sim/runtime", simRuntimeRoutes);
 app.post("/api/sim/runtime/identity", identityHandler);
+app.use((req, res, next) => {
+  if (req.method === "POST" && req.originalUrl && req.originalUrl.replace(/\/+$/, "") === "/api/sim/runtime/identity") {
+    console.warn("[sim.runtime] fallback identity handler invoked");
+    return identityHandler(req, res);
+  }
+  return next();
+});
 app.use(
   "/uploads",
   express.static(path.resolve("server/uploads"), {
