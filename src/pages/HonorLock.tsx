@@ -218,6 +218,12 @@ export default function HonorLock() {
         throw new Error("We couldn’t resolve your simulation link. Please try again later.");
       }
 
+      console.log("[HonorLock] submitting identity payload", {
+        endpoint: runtimeUrl("identity"),
+        external_simulation_id: simId,
+        selfie_length: selfie?.length,
+        id_length: idCapture?.length,
+      });
       const resp = await fetch(runtimeUrl("identity"), {
         method: "POST",
         headers: {
@@ -233,6 +239,7 @@ export default function HonorLock() {
 
       if (!resp.ok) {
         const text = await resp.text().catch(() => "");
+        console.error("[HonorLock] identity POST failed", resp.status, text);
         throw new Error(text || "Failed to persist identity verification.");
       }
 

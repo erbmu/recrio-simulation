@@ -384,6 +384,13 @@ r.post("/api/sim/runtime/identity", async (req, res) => {
     }
     const data = parsed.data;
     const externalId = data.external_simulation_id.trim();
+    console.log("[runtime.identity] incoming request", {
+      externalId,
+      selfiePath: !!data.selfie_path,
+      idPath: !!data.id_path,
+      selfieDataBytes: data.selfie_data?.length || 0,
+      idDataBytes: data.id_data?.length || 0,
+    });
     await ensureRun(externalId);
 
     let selfiePath = data.selfie_path;
@@ -403,6 +410,11 @@ r.post("/api/sim/runtime/identity", async (req, res) => {
       created_at: db.fn.now(),
     });
 
+    console.log("[runtime.identity] stored identity paths", {
+      externalId,
+      selfiePath,
+      idPath,
+    });
     return res.json({ ok: true });
   } catch (err) {
     console.error("[sim.runtime] identity_insert_failed", err);
