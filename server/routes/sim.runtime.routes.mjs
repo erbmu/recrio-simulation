@@ -50,71 +50,71 @@ const sanitize = (value) => (typeof value === "string" ? value.trim() : "");
 const normalizeScenario = (raw) => {
   const agents = Array.isArray(raw?.agents)
     ? raw.agents.slice(0, 4).map((agent) => ({
-        name: sanitize(agent?.name) || "Unnamed",
-        role: sanitize(agent?.role) || "Teammate",
-        personality: sanitize(agent?.personality),
-      }))
+      name: sanitize(agent?.name) || "Unnamed",
+      role: sanitize(agent?.role) || "Teammate",
+      personality: sanitize(agent?.personality),
+    }))
     : [];
 
   const channels = Array.isArray(raw?.channels)
     ? raw.channels.slice(0, 3).map((channel, idx) => {
-        const fallbackId = ["technical", "product", "ops"][idx] ?? `channel-${idx}`;
-        const safeId = sanitize(channel?.id)?.toLowerCase().replace(/\s+/g, "-") || fallbackId;
-        return {
-          id: safeId,
-          name: sanitize(channel?.name) || safeId,
-          description: sanitize(channel?.description),
-        };
-      })
+      const fallbackId = ["technical", "product", "ops"][idx] ?? `channel-${idx}`;
+      const safeId = sanitize(channel?.id)?.toLowerCase().replace(/\s+/g, "-") || fallbackId;
+      return {
+        id: safeId,
+        name: sanitize(channel?.name) || safeId,
+        description: sanitize(channel?.description),
+      };
+    })
     : [];
 
   const questions = Array.isArray(raw?.questions)
     ? raw.questions.map((question, idx) => {
-        const normalizedChannel =
-          sanitize(question?.channel)?.toLowerCase().replace(/\s+/g, "-") ||
-          channels[idx % Math.max(1, channels.length)]?.id ||
-          "technical";
+      const normalizedChannel =
+        sanitize(question?.channel)?.toLowerCase().replace(/\s+/g, "-") ||
+        channels[idx % Math.max(1, channels.length)]?.id ||
+        "technical";
 
-        const context = Array.isArray(question?.context)
-          ? question.context
-              .map((ctx) => ({
-                agent: sanitize(ctx?.agent),
-                message: sanitize(ctx?.message),
-              }))
-              .filter((ctx) => ctx.agent && ctx.message)
-          : [];
+      const context = Array.isArray(question?.context)
+        ? question.context
+          .map((ctx) => ({
+            agent: sanitize(ctx?.agent),
+            message: sanitize(ctx?.message),
+          }))
+          .filter((ctx) => ctx.agent && ctx.message)
+        : [];
 
-        const followUps = Array.isArray(question?.followUps)
-          ? question.followUps
-              .map((fu, fuIdx) => ({
-                id: sanitize(fu?.id) || `${question?.id || "q"}-follow-${fuIdx + 1}`,
-                agent: sanitize(fu?.agent) || "Teammate",
-                question: sanitize(fu?.question),
-              }))
-              .filter((fu) => fu.question)
-          : [];
+      const followUps = Array.isArray(question?.followUps)
+        ? question.followUps
+          .map((fu, fuIdx) => ({
+            id: sanitize(fu?.id) || `${question?.id || "q"}-follow-${fuIdx + 1}`,
+            agent: sanitize(fu?.agent) || "Teammate",
+            question: sanitize(fu?.question),
+          }))
+          .filter((fu) => fu.question)
+        : [];
 
-        let stimulus = null;
-        if (question?.stimulus) {
-          const { type, title, content } = question.stimulus;
-          if (type && title && content) {
-            stimulus = {
-              type,
-              title: title.trim(),
-              content: content.trim(),
-            };
-          }
+      let stimulus = null;
+      if (question?.stimulus) {
+        const { type, title, content } = question.stimulus;
+        if (type && title && content) {
+          stimulus = {
+            type,
+            title: title.trim(),
+            content: content.trim(),
+          };
         }
+      }
 
-        return {
-          id: sanitize(question?.id) || `q-${idx + 1}`,
-          channel: normalizedChannel,
-          mainQuestion: sanitize(question?.mainQuestion),
-          stimulus,
-          context,
-          followUps,
-        };
-      })
+      return {
+        id: sanitize(question?.id) || `q-${idx + 1}`,
+        channel: normalizedChannel,
+        mainQuestion: sanitize(question?.mainQuestion),
+        stimulus,
+        context,
+        followUps,
+      };
+    })
     : [];
 
   const channelIds = new Set(channels.map((c) => c.id));
@@ -145,7 +145,7 @@ const persistDataUrl = async (dataUrl, kind, externalId) => {
   const base64 = match[2] || "";
   const ext = mime.includes("jpeg") || mime.includes("jpg") ? "jpg" : "png";
   const filename = `${externalId}-${kind}-${Date.now()}-${randomUUID()}.${ext}`;
-  await fs.mkdir(HONOR_LOCK_DIR, { recursive: true }).catch(() => {});
+  await fs.mkdir(HONOR_LOCK_DIR, { recursive: true }).catch(() => { });
   const absolutePath = path.join(HONOR_LOCK_DIR, filename);
   await fs.writeFile(absolutePath, Buffer.from(base64, "base64"));
   return path.posix.join(HONOR_LOCK_RELATIVE_PREFIX, filename);
@@ -400,35 +400,20 @@ export async function identityHandler(req, res) {
     const externalId = data.external_simulation_id.trim();
     console.log("[runtime.identity] incoming request", {
       externalId,
-      selfiePath: !!data.selfie_path,
-      idPath: !!data.id_path,
       selfieDataBytes: data.selfie_data?.length || 0,
       idDataBytes: data.id_data?.length || 0,
     });
     await ensureRun(externalId);
 
-    let selfiePath = data.selfie_path;
-    let idPath = data.id_path;
-
-    if (!selfiePath && data.selfie_data) {
-      selfiePath = await persistDataUrl(data.selfie_data, "selfie", externalId);
-    }
-    if (!idPath && data.id_data) {
-      idPath = await persistDataUrl(data.id_data, "id", externalId);
-    }
-
+    // Store directly in DB as requested by user ("save to neon database")
     await db("simulation_identity_checks").insert({
       external_simulation_id: externalId,
-      selfie_path: selfiePath,
-      id_path: idPath,
+      selfie_data: data.selfie_data || null,
+      id_data: data.id_data || null,
       created_at: db.fn.now(),
     });
 
-    console.log("[runtime.identity] stored identity paths", {
-      externalId,
-      selfiePath,
-      idPath,
-    });
+    console.log("[runtime.identity] stored identity data in DB", { externalId });
     return res.json({ ok: true });
   } catch (err) {
     console.error("[sim.runtime] identity_insert_failed", err);
@@ -475,12 +460,12 @@ async function analyzeHandler(req, res) {
 
     const responsesBlock = responses.length
       ? responses
-          .map((entry, idx) => {
-            const questionId = entry.question_id || `q-${idx + 1}`;
-            const answer = entry.response || "";
-            return `Q${idx + 1} (${questionId}):\n${answer}`;
-          })
-          .join("\n\n")
+        .map((entry, idx) => {
+          const questionId = entry.question_id || `q-${idx + 1}`;
+          const answer = entry.response || "";
+          return `Q${idx + 1} (${questionId}):\n${answer}`;
+        })
+        .join("\n\n")
       : "No responses were recorded.";
 
     const scenarioBlock = JSON.stringify(run.generated_scenario ?? {}, null, 2);

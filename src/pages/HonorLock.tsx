@@ -225,7 +225,7 @@ export default function HonorLock() {
         selfie_length: selfie?.length,
         id_length: idCapture?.length,
       });
-      const resp = await fetch(honorLockUrl("identity"), {
+      const resp = await fetch(runtimeUrl("identity"), {
         method: "POST",
         headers: {
           Accept: "application/json",

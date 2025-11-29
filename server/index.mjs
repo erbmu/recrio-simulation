@@ -10,7 +10,6 @@ import adminRoutes from "./routes/admin.mjs";
 import simPublicRoutes from "./routes/sim.public.routes.mjs";
 import simRoutes from "./routes/sim.routes.mjs";
 import simRuntimeRoutes from "./routes/sim.runtime.routes.mjs";
-import honorLockRoutes from "./routes/honorLock.routes.mjs";
 import path from "path";
 
 // ATS APIs
@@ -52,12 +51,6 @@ app.use(
   })
 );
 app.use(morgan(isProd ? "combined" : "tiny"));
-
-console.log("Mounting /api/honor-lock");
-app.use("/api/honor-lock", (req, res, next) => {
-  console.log(`[DBG] Entering honor-lock middleware: ${req.url}`);
-  next();
-}, honorLockRoutes);
 
 app.use(orgRoutes);
 
