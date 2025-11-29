@@ -30,23 +30,6 @@ app.use("/api/orgs/public", orgPublicRoutes);
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: false, limit: "10mb" }));
-app.use(
-  helmet({
-    contentSecurityPolicy: false,
-    referrerPolicy: { policy: "no-referrer" },
-    frameguard: { action: "deny" },
-    crossOriginResourcePolicy: { policy: "same-site" },
-    hsts: isProd ? undefined : false,
-  })
-);
-app.use(morgan(isProd ? "combined" : "tiny"));
-
-app.use("/api/honor-lock", honorLockRoutes);
-
-app.use(orgRoutes);
-
-app.use(simPublicRoutes);
-app.use(simRoutes);
 
 // VERY VERBOSE per-request logger
 app.use((req, res, next) => {
@@ -58,6 +41,29 @@ app.use((req, res, next) => {
   });
   next();
 });
+
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    referrerPolicy: { policy: "no-referrer" },
+    frameguard: { action: "deny" },
+    crossOriginResourcePolicy: { policy: "same-site" },
+    hsts: isProd ? undefined : false,
+  })
+);
+app.use(morgan(isProd ? "combined" : "tiny"));
+
+console.log("Mounting /api/honor-lock");
+app.use("/api/honor-lock", (req, res, next) => {
+  console.log(`[DBG] Entering honor-lock middleware: ${req.url}`);
+  next();
+}, honorLockRoutes);
+
+app.use(orgRoutes);
+
+app.use(simPublicRoutes);
+app.use(simRoutes);
+app.use("/api/sim/runtime", simRuntimeRoutes);
 
 // BigInt-safe JSON
 app.use((req, res, next) => {

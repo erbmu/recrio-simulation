@@ -40,7 +40,7 @@ const persistDataUrl = async (dataUrl, kind, externalId) => {
   const mime = match[1] || "image/png";
   const base64 = match[2] || "";
   const ext = mime.includes("jpeg") || mime.includes("jpg") ? "jpg" : "png";
-  await fs.mkdir(HONOR_LOCK_DIR, { recursive: true }).catch(() => {});
+  await fs.mkdir(HONOR_LOCK_DIR, { recursive: true }).catch(() => { });
   const filename = `${externalId}-${kind}-${Date.now()}-${randomUUID()}.${ext}`;
   const absolutePath = path.join(HONOR_LOCK_DIR, filename);
   await fs.writeFile(absolutePath, Buffer.from(base64, "base64"));
@@ -48,6 +48,7 @@ const persistDataUrl = async (dataUrl, kind, externalId) => {
 };
 
 router.post("/identity", async (req, res) => {
+  console.log(`[honorLock] HIT /identity with body keys: ${Object.keys(req.body)}`);
   try {
     const parsed = IdentitySchema.safeParse(req.body);
     if (!parsed.success) {
