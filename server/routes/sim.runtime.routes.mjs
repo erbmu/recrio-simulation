@@ -151,7 +151,10 @@ const persistDataUrl = async (dataUrl, kind, externalId) => {
   return path.posix.join(HONOR_LOCK_RELATIVE_PREFIX, filename);
 };
 
-r.post("/run", async (req, res) => {
+r.post("/run", async (req, res) => runUpsertHandler(req, res));
+r.post("/api/sim/runtime/run", async (req, res) => runUpsertHandler(req, res));
+
+async function runUpsertHandler(req, res) {
   try {
     const parsed = RunUpsertSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -203,9 +206,12 @@ r.post("/run", async (req, res) => {
     console.error("[sim.runtime] run_upsert_failed", err);
     return res.status(500).json({ error: "internal_error" });
   }
-});
+}
 
-r.get("/run/:id", async (req, res) => {
+r.get("/run/:id", async (req, res) => runFetchHandler(req, res));
+r.get("/api/sim/runtime/run/:id", async (req, res) => runFetchHandler(req, res));
+
+async function runFetchHandler(req, res) {
   try {
     const key = String(req.params.id || "").trim();
     if (!key) return res.status(400).json({ error: "bad_id" });
@@ -221,7 +227,7 @@ r.get("/run/:id", async (req, res) => {
     console.error("[sim.runtime] run_fetch_failed", err);
     return res.status(500).json({ error: "internal_error" });
   }
-});
+}
 
 const ResponseSchema = z.object({
   external_simulation_id: z.string().min(1),
@@ -229,7 +235,10 @@ const ResponseSchema = z.object({
   response: z.string().min(1),
 });
 
-r.post("/response", async (req, res) => {
+r.post("/response", async (req, res) => responseHandler(req, res));
+r.post("/api/sim/runtime/response", async (req, res) => responseHandler(req, res));
+
+async function responseHandler(req, res) {
   try {
     const parsed = ResponseSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -253,14 +262,17 @@ r.post("/response", async (req, res) => {
     console.error("[sim.runtime] response_insert_failed", err);
     return res.status(500).json({ error: "internal_error" });
   }
-});
+}
 
 const ScenarioSchema = z.object({
   jobDescription: z.string().min(1),
   companyDescription: z.string().min(1),
 });
 
-r.post("/scenario", async (req, res) => {
+r.post("/scenario", async (req, res) => scenarioHandler(req, res));
+r.post("/api/sim/runtime/scenario", async (req, res) => scenarioHandler(req, res));
+
+async function scenarioHandler(req, res) {
   try {
     const parsed = ScenarioSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -335,14 +347,17 @@ Return the scenario strictly as JSON.`;
     console.error("[sim.runtime] scenario_generate_failed", err);
     return res.status(500).json({ error: "internal_error" });
   }
-});
+}
 
 const ViolationSchema = z.object({
   external_simulation_id: z.string().min(1),
   violation_type: z.string().min(1),
 });
 
-r.post("/violation", async (req, res) => {
+r.post("/violation", async (req, res) => violationHandler(req, res));
+r.post("/api/sim/runtime/violation", async (req, res) => violationHandler(req, res));
+
+async function violationHandler(req, res) {
   try {
     const parsed = ViolationSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -365,7 +380,7 @@ r.post("/violation", async (req, res) => {
     console.error("[sim.runtime] violation_insert_failed", err);
     return res.status(500).json({ error: "internal_error" });
   }
-});
+}
 
 const IdentitySchema = z.object({
   external_simulation_id: z.string().min(1),
@@ -375,7 +390,10 @@ const IdentitySchema = z.object({
   id_data: optionalString.optional(),
 });
 
-r.post("/identity", async (req, res) => {
+r.post("/identity", async (req, res) => identityHandler(req, res));
+r.post("/api/sim/runtime/identity", async (req, res) => identityHandler(req, res));
+
+async function identityHandler(req, res) {
   try {
     const parsed = IdentitySchema.safeParse(req.body);
     if (!parsed.success) {
@@ -419,13 +437,16 @@ r.post("/identity", async (req, res) => {
     console.error("[sim.runtime] identity_insert_failed", err);
     return res.status(500).json({ error: "internal_error" });
   }
-});
+}
 
 const AnalyzeSchema = z.object({
   simulationId: z.string().min(1),
 });
 
-r.post("/analyze", async (req, res) => {
+r.post("/analyze", async (req, res) => analyzeHandler(req, res));
+r.post("/api/sim/runtime/analyze", async (req, res) => analyzeHandler(req, res));
+
+async function analyzeHandler(req, res) {
   try {
     if (!GEMINI_API_KEY) return res.status(500).json({ error: "missing_gemini_key" });
     const parsed = AnalyzeSchema.safeParse(req.body);
@@ -549,16 +570,15 @@ Provide strict hiring scores (0-100) across each dimension. Return JSON, no pros
     console.error("[sim.runtime] analyze_failed", err);
     return res.status(500).json({ error: "internal_error" });
   }
-});
+}
 
 const TextToSpeechSchema = z.object({
   text: z.string().min(1),
   voice: z.string().optional(),
 });
 
-r.post("/text-to-speech", async (_req, res) => {
-  return res.status(501).json({ error: "tts_not_configured" });
-});
+r.post("/text-to-speech", async (_req, res) => res.status(501).json({ error: "tts_not_configured" }));
+r.post("/api/sim/runtime/text-to-speech", async (_req, res) => res.status(501).json({ error: "tts_not_configured" }));
 
 const SpeechToTextSchema = z.object({
   audio: z.string().min(1),
@@ -568,7 +588,10 @@ const SpeechToTextSchema = z.object({
 const sanitizeBase64 = (value) =>
   typeof value === "string" ? value.replace(/^data:[^;]+;base64,/, "").replace(/[\r\n\s]/g, "") : "";
 
-r.post("/speech-to-text", async (req, res) => {
+r.post("/speech-to-text", async (req, res) => speechToTextHandler(req, res));
+r.post("/api/sim/runtime/speech-to-text", async (req, res) => speechToTextHandler(req, res));
+
+async function speechToTextHandler(req, res) {
   try {
     if (!GEMINI_API_KEY) {
       return res.status(500).json({ error: "missing_gemini_key" });
@@ -622,14 +645,17 @@ r.post("/speech-to-text", async (req, res) => {
     console.error("[sim.runtime] stt_failed", err);
     return res.status(500).json({ error: "internal_error" });
   }
-});
+}
 
 const ProctoringSchema = z.object({
   image: z.string().min(10),
   simulationId: z.string().min(1),
 });
 
-r.post("/analyze-proctoring", async (req, res) => {
+r.post("/analyze-proctoring", async (req, res) => proctoringHandler(req, res));
+r.post("/api/sim/runtime/analyze-proctoring", async (req, res) => proctoringHandler(req, res));
+
+async function proctoringHandler(req, res) {
   try {
     const parsed = ProctoringSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -640,6 +666,6 @@ r.post("/analyze-proctoring", async (req, res) => {
     console.error("[proctoring] analyze_failed", err);
     return res.status(500).json({ error: "internal_error" });
   }
-});
+}
 
 export default r;
