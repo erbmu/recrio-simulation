@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { buildApiUrl } from "@/lib/api";
 
 const runtimeUrl = (path: string) => buildApiUrl(`/api/sim/runtime/${path}`);
+const honorLockUrl = (path: string) => buildApiUrl(`/api/honor-lock/${path}`);
 
 const FALLBACK_IMAGE_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+kvp8AAAAASUVORK5CYII=";
@@ -224,7 +225,7 @@ export default function HonorLock() {
         selfie_length: selfie?.length,
         id_length: idCapture?.length,
       });
-      const resp = await fetch(runtimeUrl("identity"), {
+      const resp = await fetch(honorLockUrl("identity"), {
         method: "POST",
         headers: {
           Accept: "application/json",
