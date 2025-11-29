@@ -10,7 +10,6 @@ import adminRoutes from "./routes/admin.mjs";
 import simPublicRoutes from "./routes/sim.public.routes.mjs";
 import simRoutes from "./routes/sim.routes.mjs";
 import simRuntimeRoutes from "./routes/sim.runtime.routes.mjs";
-import runtimeIdentityRouter from "./routes/runtime.identity.route.mjs";
 import path from "path";
 
 // ATS APIs
@@ -46,7 +45,22 @@ app.use(orgRoutes);
 app.use(simPublicRoutes);
 app.use(simRoutes);
 app.use("/api/sim/runtime", simRuntimeRoutes);
-app.use(runtimeIdentityRouter);
+app.post("/api/sim/runtime/identity", async (req, res, next) => {
+  try {
+    const mod = await import("./routes/sim.runtime.routes.mjs");
+    return mod.identityHandler(req, res);
+  } catch (err) {
+    return next(err);
+  }
+});
+app.post("/identity", async (req, res, next) => {
+  try {
+    const mod = await import("./routes/sim.runtime.routes.mjs");
+    return mod.identityHandler(req, res);
+  } catch (err) {
+    return next(err);
+  }
+});
 app.use(
   "/uploads",
   express.static(path.resolve("server/uploads"), {
