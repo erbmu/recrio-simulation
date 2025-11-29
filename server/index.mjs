@@ -52,11 +52,16 @@ app.use(
 );
 app.use(morgan(isProd ? "combined" : "tiny"));
 
+console.log("Mounting /api/sim/runtime");
+app.use("/api/sim/runtime", (req, res, next) => {
+  console.log(`[DBG] Entering runtime middleware: ${req.url}`);
+  next();
+}, simRuntimeRoutes);
+
 app.use(orgRoutes);
 
 app.use(simPublicRoutes);
 app.use(simRoutes);
-app.use("/api/sim/runtime", simRuntimeRoutes);
 
 // BigInt-safe JSON
 app.use((req, res, next) => {

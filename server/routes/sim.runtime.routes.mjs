@@ -7,6 +7,15 @@ import { db } from "../db.mjs";
 
 const r = Router();
 
+console.log("[sim.runtime] Module loaded");
+
+r.use((req, res, next) => {
+  console.log(`[sim.runtime] Router hit: ${req.method} ${req.url}`);
+  next();
+});
+
+r.get("/ping", (req, res) => res.send("pong"));
+
 const optionalString = z.union([z.string(), z.undefined(), z.null()]).transform((v) => (typeof v === "string" ? v : null));
 
 const GEMINI_API_KEY = (process.env.GEMINI_API_KEY || "").trim();
