@@ -145,14 +145,13 @@ const persistDataUrl = async (dataUrl, kind, externalId) => {
   const base64 = match[2] || "";
   const ext = mime.includes("jpeg") || mime.includes("jpg") ? "jpg" : "png";
   const filename = `${externalId}-${kind}-${Date.now()}-${randomUUID()}.${ext}`;
-  const absoluteDir = HONOR_LOCK_DIR;
-  await fs.mkdir(absoluteDir, { recursive: true }).catch(() => {});
-  const absolutePath = path.join(absoluteDir, filename);
+  await fs.mkdir(HONOR_LOCK_DIR, { recursive: true }).catch(() => {});
+  const absolutePath = path.join(HONOR_LOCK_DIR, filename);
   await fs.writeFile(absolutePath, Buffer.from(base64, "base64"));
   return path.posix.join(HONOR_LOCK_RELATIVE_PREFIX, filename);
 };
 
-r.post("/api/sim/runtime/run", async (req, res) => {
+r.post("/run", async (req, res) => {
   try {
     const parsed = RunUpsertSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -206,7 +205,7 @@ r.post("/api/sim/runtime/run", async (req, res) => {
   }
 });
 
-r.get("/api/sim/runtime/run/:id", async (req, res) => {
+r.get("/run/:id", async (req, res) => {
   try {
     const key = String(req.params.id || "").trim();
     if (!key) return res.status(400).json({ error: "bad_id" });
@@ -230,7 +229,7 @@ const ResponseSchema = z.object({
   response: z.string().min(1),
 });
 
-r.post("/api/sim/runtime/response", async (req, res) => {
+r.post("/response", async (req, res) => {
   try {
     const parsed = ResponseSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -261,7 +260,7 @@ const ScenarioSchema = z.object({
   companyDescription: z.string().min(1),
 });
 
-r.post("/api/sim/runtime/scenario", async (req, res) => {
+r.post("/scenario", async (req, res) => {
   try {
     const parsed = ScenarioSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -343,7 +342,7 @@ const ViolationSchema = z.object({
   violation_type: z.string().min(1),
 });
 
-r.post("/api/sim/runtime/violation", async (req, res) => {
+r.post("/violation", async (req, res) => {
   try {
     const parsed = ViolationSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -376,7 +375,7 @@ const IdentitySchema = z.object({
   id_data: optionalString.optional(),
 });
 
-r.post("/api/sim/runtime/identity", async (req, res) => {
+r.post("/identity", async (req, res) => {
   try {
     const parsed = IdentitySchema.safeParse(req.body);
     if (!parsed.success) {
@@ -426,21 +425,7 @@ const AnalyzeSchema = z.object({
   simulationId: z.string().min(1),
 });
 
-const SCORE_SCHEMA_KEYS = [
-  "businessImpactScore",
-  "technicalAccuracy",
-  "tradeOffAnalysis",
-  "communicationClarity",
-  "adaptability",
-  "creativityInnovationIndex",
-  "biasTowardExecution",
-  "learningAgility",
-  "founderFitIndex",
-  "overallStartupReadinessIndex",
-  "analysis",
-];
-
-r.post("/api/sim/runtime/analyze", async (req, res) => {
+r.post("/analyze", async (req, res) => {
   try {
     if (!GEMINI_API_KEY) return res.status(500).json({ error: "missing_gemini_key" });
     const parsed = AnalyzeSchema.safeParse(req.body);
@@ -536,12 +521,19 @@ Provide strict hiring scores (0-100) across each dimension. Return JSON, no pros
       throw new Error(`Failed to parse analysis JSON: ${err?.message || err}`);
     }
 
-    const sanitizedReport = SCORE_SCHEMA_KEYS.reduce((acc, key) => {
-      if (report && Object.prototype.hasOwnProperty.call(report, key)) {
-        acc[key] = report[key];
-      }
-      return acc;
-    }, {});
+    const sanitizedReport = {
+      businessImpactScore: report?.businessImpactScore,
+      technicalAccuracy: report?.technicalAccuracy,
+      tradeOffAnalysis: report?.tradeOffAnalysis,
+      communicationClarity: report?.communicationClarity,
+      adaptability: report?.adaptability,
+      creativityInnovationIndex: report?.creativityInnovationIndex,
+      biasTowardExecution: report?.biasTowardExecution,
+      learningAgility: report?.learningAgility,
+      founderFitIndex: report?.founderFitIndex,
+      overallStartupReadinessIndex: report?.overallStartupReadinessIndex,
+      analysis: report?.analysis,
+    };
 
     const generatedAt = new Date().toISOString();
     await db("simulation_runs")
@@ -564,7 +556,7 @@ const TextToSpeechSchema = z.object({
   voice: z.string().optional(),
 });
 
-r.post("/api/sim/runtime/text-to-speech", async (_req, res) => {
+r.post("/text-to-speech", async (_req, res) => {
   return res.status(501).json({ error: "tts_not_configured" });
 });
 
@@ -576,7 +568,7 @@ const SpeechToTextSchema = z.object({
 const sanitizeBase64 = (value) =>
   typeof value === "string" ? value.replace(/^data:[^;]+;base64,/, "").replace(/[\r\n\s]/g, "") : "";
 
-r.post("/api/sim/runtime/speech-to-text", async (req, res) => {
+r.post("/speech-to-text", async (req, res) => {
   try {
     if (!GEMINI_API_KEY) {
       return res.status(500).json({ error: "missing_gemini_key" });
@@ -628,6 +620,24 @@ r.post("/api/sim/runtime/speech-to-text", async (req, res) => {
     return res.json({ text });
   } catch (err) {
     console.error("[sim.runtime] stt_failed", err);
+    return res.status(500).json({ error: "internal_error" });
+  }
+});
+
+const ProctoringSchema = z.object({
+  image: z.string().min(10),
+  simulationId: z.string().min(1),
+});
+
+r.post("/analyze-proctoring", async (req, res) => {
+  try {
+    const parsed = ProctoringSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "bad_request", details: parsed.error.flatten() });
+    }
+    return res.json({ violation: false });
+  } catch (err) {
+    console.error("[proctoring] analyze_failed", err);
     return res.status(500).json({ error: "internal_error" });
   }
 });

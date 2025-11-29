@@ -10,7 +10,6 @@ import adminRoutes from "./routes/admin.mjs";
 import simPublicRoutes from "./routes/sim.public.routes.mjs";
 import simRoutes from "./routes/sim.routes.mjs";
 import simRuntimeRoutes from "./routes/sim.runtime.routes.mjs";
-import proctoringRoutes from "./routes/proctoring.routes.mjs";
 import path from "path";
 
 // ATS APIs
@@ -45,8 +44,7 @@ app.use(orgRoutes);
 
 app.use(simPublicRoutes);
 app.use(simRoutes);
-app.use(simRuntimeRoutes);
-app.use(proctoringRoutes);
+app.use("/api/sim/runtime", simRuntimeRoutes);
 app.use(
   "/uploads",
   express.static(path.resolve("server/uploads"), {
