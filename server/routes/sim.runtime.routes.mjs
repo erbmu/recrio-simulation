@@ -339,6 +339,10 @@ Return the scenario strictly as JSON.`;
         ?.map((part) => part?.text ?? "")
         .join("")
         .trim() ?? "";
+
+    console.log(`[sim.runtime] Gemini response length: ${rawJson.length}`);
+    if (rawJson.length < 500) console.log(`[sim.runtime] Gemini raw: ${rawJson}`);
+
     if (!rawJson) {
       return res.status(500).json({ error: "scenario_empty" });
     }
@@ -347,10 +351,12 @@ Return the scenario strictly as JSON.`;
       scenario = JSON.parse(rawJson);
     } catch (err) {
       console.error("[sim.runtime] scenario_parse_failed", err);
+      console.log(`[sim.runtime] Failed JSON: ${rawJson.slice(0, 1000)}...`);
       return res.status(500).json({ error: "scenario_parse_failed" });
     }
 
     const normalized = normalizeScenario(scenario);
+    console.log(`[sim.runtime] Normalized scenario: agents=${normalized.agents.length}, channels=${normalized.channels.length}, questions=${normalized.questions.length}`);
     return res.json({ scenario: normalized });
   } catch (err) {
     console.error("[sim.runtime] scenario_generate_failed", err);
