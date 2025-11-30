@@ -21,16 +21,8 @@ import orgPublicRoutes from "./routes/org.public.routes.mjs";
 dotenv.config();
 
 const app = express();
-app.use(cors({ origin: true, credentials: false }));
-const isProd = process.env.NODE_ENV === "production";
 
-app.disable("x-powered-by");
-app.use("/api/orgs/public", orgPublicRoutes);
-
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: false, limit: "10mb" }));
-
-// VERY VERBOSE per-request logger
+// VERY VERBOSE per-request logger - MOVED TO TOP
 app.use((req, res, next) => {
   const start = Date.now();
   console.log(`[SRV][IN]  ${req.method} ${req.originalUrl}`);
@@ -41,12 +33,21 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use(cors({ origin: true, credentials: false }));
+const isProd = process.env.NODE_ENV === "production";
+
+app.disable("x-powered-by");
+app.use("/api/orgs/public", orgPublicRoutes);
+
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: false, limit: "50mb" }));
+
 app.use(
   helmet({
     contentSecurityPolicy: false,
     referrerPolicy: { policy: "no-referrer" },
     frameguard: { action: "deny" },
-    crossOriginResourcePolicy: { policy: "same-site" },
+    crossOriginResourcePolicy: false, // Disabled to allow cross-origin API usage
     hsts: isProd ? undefined : false,
   })
 );
