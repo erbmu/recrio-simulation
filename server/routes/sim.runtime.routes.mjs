@@ -299,6 +299,12 @@ The simulation should:
 4) Distinct AI personas (Founder, Lead Engineer, PM, Designer, etc.);
 5) Startup-feel authenticity;
 6) 30–40% of questions include realistic stimulus (code/document/data) when referenced.
+
+CRITICAL INSTRUCTION:
+- The scenario MUST be deeply customized to the specific Job Description and Company Description provided.
+- Do NOT use generic questions. Every question should feel like it could only be asked at THIS company for THIS role.
+- Reference specific technologies, responsibilities, or company values mentioned in the descriptions.
+
 RULE: If any question text references external material, you MUST include that exact material in the "stimulus" object.`;
 
     const userPrompt = `Create a hiring simulation for the following role.
