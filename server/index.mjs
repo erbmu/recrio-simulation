@@ -52,6 +52,10 @@ app.use(
 );
 app.use(morgan(isProd ? "combined" : "tiny"));
 
+console.log(`[STARTUP] Server starting at ${new Date().toISOString()}`);
+console.log(`[STARTUP] simRuntimeRoutes type: ${typeof simRuntimeRoutes}`);
+console.log(`[STARTUP] simRuntimeRoutes is function: ${typeof simRuntimeRoutes === 'function'}`);
+
 console.log("Mounting /api/sim/runtime");
 app.use("/api/sim/runtime", (req, res, next) => {
   console.log(`[DBG] Entering runtime middleware: ${req.url}`);
