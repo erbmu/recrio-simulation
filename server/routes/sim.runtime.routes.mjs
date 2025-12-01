@@ -574,24 +574,38 @@ Provide strict hiring scores (0-100) across each dimension. Return JSON, no pros
 
     let report = null;
     try {
-      report = JSON.parse(rawReport);
+      // Strip markdown code blocks if present
+      const cleanJson = rawReport.replace(/```json\n?|```/g, "").trim();
+      report = JSON.parse(cleanJson);
+
+      console.log(`[sim.runtime] analyze: Parsed keys: ${Object.keys(report).join(", ")}`);
+
+      // Handle potential nesting (e.g. { "analysis": { ... } })
+      if (!report.businessImpactScore && !report.overallStartupReadinessIndex) {
+        const values = Object.values(report);
+        const nested = values.find(v => v && typeof v === 'object' && !Array.isArray(v) && (v.businessImpactScore || v.overallStartupReadinessIndex));
+        if (nested) {
+          console.log("[sim.runtime] analyze: Found nested report object, unwrapping...");
+          report = nested;
+        }
+      }
     } catch (err) {
       console.error(`[sim.runtime] analyze: JSON parse failed. Raw: ${rawReport.slice(0, 500)}...`);
       throw new Error(`Failed to parse analysis JSON: ${err?.message || err}`);
     }
 
     const sanitizedReport = {
-      businessImpactScore: report?.businessImpactScore,
-      technicalAccuracy: report?.technicalAccuracy,
-      tradeOffAnalysis: report?.tradeOffAnalysis,
-      communicationClarity: report?.communicationClarity,
-      adaptability: report?.adaptability,
-      creativityInnovationIndex: report?.creativityInnovationIndex,
-      biasTowardExecution: report?.biasTowardExecution,
-      learningAgility: report?.learningAgility,
-      founderFitIndex: report?.founderFitIndex,
-      overallStartupReadinessIndex: report?.overallStartupReadinessIndex,
-      analysis: report?.analysis,
+      businessImpactScore: report?.businessImpactScore ?? 0,
+      technicalAccuracy: report?.technicalAccuracy ?? 0,
+      tradeOffAnalysis: report?.tradeOffAnalysis ?? 0,
+      communicationClarity: report?.communicationClarity ?? 0,
+      adaptability: report?.adaptability ?? 0,
+      creativityInnovationIndex: report?.creativityInnovationIndex ?? 0,
+      biasTowardExecution: report?.biasTowardExecution ?? 0,
+      learningAgility: report?.learningAgility ?? 0,
+      founderFitIndex: report?.founderFitIndex ?? 0,
+      overallStartupReadinessIndex: report?.overallStartupReadinessIndex ?? 0,
+      analysis: report?.analysis || "No analysis text provided.",
     };
 
     const generatedAt = new Date().toISOString();
