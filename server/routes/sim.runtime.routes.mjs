@@ -224,10 +224,17 @@ async function runFetchHandler(req, res) {
   try {
     const key = String(req.params.id || "").trim();
     if (!key) return res.status(400).json({ error: "bad_id" });
-    const row = await db("simulation_runs")
-      .where({ id: key })
-      .orWhere({ external_simulation_id: key })
-      .first();
+
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key);
+    let query = db("simulation_runs");
+
+    if (isUuid) {
+      query = query.where({ id: key }).orWhere({ external_simulation_id: key });
+    } else {
+      query = query.where({ external_simulation_id: key });
+    }
+
+    const row = await query.first();
     if (!row) {
       return res.status(404).json({ error: "not_found" });
     }
@@ -467,10 +474,17 @@ async function analyzeHandler(req, res) {
     const key = parsed.data.simulationId.trim();
     console.log(`[sim.runtime] analyze: starting for ${key}`);
 
-    const run = await db("simulation_runs")
-      .where({ id: key })
-      .orWhere({ external_simulation_id: key })
-      .first();
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key);
+    let query = db("simulation_runs");
+
+    if (isUuid) {
+      query = query.where({ id: key }).orWhere({ external_simulation_id: key });
+    } else {
+      query = query.where({ external_simulation_id: key });
+    }
+
+    const run = await query.first();
+
     if (!run) {
       console.warn(`[sim.runtime] analyze: run not found for ${key}`);
       return res.status(404).json({ error: "simulation_not_found" });
