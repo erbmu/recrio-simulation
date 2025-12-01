@@ -57,6 +57,10 @@ const ensureRun = async (externalId) => {
 const sanitize = (value) => (typeof value === "string" ? value.trim() : "");
 
 const normalizeScenario = (raw) => {
+  console.log(`[sim.runtime] normalizeScenario input keys: ${Object.keys(raw || {}).join(", ")}`);
+  if (raw?.channels) console.log(`[sim.runtime] raw.channels is array: ${Array.isArray(raw.channels)} len=${raw.channels.length}`);
+  if (raw?.questions) console.log(`[sim.runtime] raw.questions is array: ${Array.isArray(raw.questions)} len=${raw.questions.length}`);
+
   const agents = Array.isArray(raw?.agents)
     ? raw.agents.slice(0, 4).map((agent) => ({
       name: sanitize(agent?.name) || "Unnamed",
@@ -295,6 +299,9 @@ async function scenarioHandler(req, res) {
       console.error("[sim.runtime] scenario: bad_request", parsed.error.flatten());
       return res.status(400).json({ error: "bad_request", details: parsed.error.flatten() });
     }
+
+    console.log(`[sim.runtime] scenario: received jobDesc len=${parsed.data.jobDescription.length}, companyDesc len=${parsed.data.companyDescription.length}`);
+
     if (!GEMINI_API_KEY) {
       return res.status(500).json({ error: "missing_gemini_key" });
     }
@@ -313,7 +320,23 @@ CRITICAL INSTRUCTION:
 - Do NOT use generic questions. Every question should feel like it could only be asked at THIS company for THIS role.
 - Reference specific technologies, responsibilities, or company values mentioned in the descriptions.
 
-RULE: If any question text references external material, you MUST include that exact material in the "stimulus" object.`;
+RULE: If any question text references external material, you MUST include that exact material in the "stimulus" object.
+
+REQUIRED JSON STRUCTURE:
+{
+  "agents": [{ "name": "...", "role": "...", "personality": "..." }],
+  "channels": [{ "id": "...", "name": "...", "description": "..." }],
+  "questions": [
+    {
+      "id": "...",
+      "channel": "channel-id-match",
+      "mainQuestion": "...",
+      "context": [{ "agent": "...", "message": "..." }],
+      "followUps": [{ "id": "...", "agent": "...", "question": "..." }]
+    }
+  ]
+}
+IMPORTANT: "questions" must be a top-level array, NOT nested inside channels.`;
 
     const userPrompt = `Create a hiring simulation for the following role.
 
