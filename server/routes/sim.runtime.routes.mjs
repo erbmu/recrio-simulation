@@ -292,6 +292,7 @@ async function scenarioHandler(req, res) {
   try {
     const parsed = ScenarioSchema.safeParse(req.body);
     if (!parsed.success) {
+      console.error("[sim.runtime] scenario: bad_request", parsed.error.flatten());
       return res.status(400).json({ error: "bad_request", details: parsed.error.flatten() });
     }
     if (!GEMINI_API_KEY) {
