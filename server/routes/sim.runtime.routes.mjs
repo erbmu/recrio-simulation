@@ -361,7 +361,9 @@ Return the scenario strictly as JSON.`;
     }
     let scenario;
     try {
-      scenario = JSON.parse(rawJson);
+      // Strip markdown code blocks if present
+      const cleanJson = rawJson.replace(/```json\n?|```/g, "").trim();
+      scenario = JSON.parse(cleanJson);
     } catch (err) {
       console.error("[sim.runtime] scenario_parse_failed", err);
       console.log(`[sim.runtime] Failed JSON: ${rawJson.slice(0, 1000)}...`);
