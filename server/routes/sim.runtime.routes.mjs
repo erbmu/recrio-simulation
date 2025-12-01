@@ -453,20 +453,31 @@ r.post("/analyze", async (req, res) => analyzeHandler(req, res));
 r.post("/api/sim/runtime/analyze", async (req, res) => analyzeHandler(req, res));
 
 async function analyzeHandler(req, res) {
+  const start = Date.now();
   try {
-    if (!GEMINI_API_KEY) return res.status(500).json({ error: "missing_gemini_key" });
+    if (!GEMINI_API_KEY) {
+      console.error("[sim.runtime] analyze: missing_gemini_key");
+      return res.status(500).json({ error: "missing_gemini_key" });
+    }
     const parsed = AnalyzeSchema.safeParse(req.body);
     if (!parsed.success) {
+      console.error("[sim.runtime] analyze: bad_request", parsed.error.flatten());
       return res.status(400).json({ error: "bad_request", details: parsed.error.flatten() });
     }
     const key = parsed.data.simulationId.trim();
+    console.log(`[sim.runtime] analyze: starting for ${key}`);
+
     const run = await db("simulation_runs")
       .where({ id: key })
       .orWhere({ external_simulation_id: key })
       .first();
-    if (!run) return res.status(404).json({ error: "simulation_not_found" });
+    if (!run) {
+      console.warn(`[sim.runtime] analyze: run not found for ${key}`);
+      return res.status(404).json({ error: "simulation_not_found" });
+    }
 
     if (run.analysis_report) {
+      console.log(`[sim.runtime] analyze: returning cached report for ${key}`);
       return res.json({
         report: run.analysis_report,
         analysis_generated_at: run.analysis_generated_at,
@@ -478,6 +489,8 @@ async function analyzeHandler(req, res) {
       .select("question_id", "response", "timestamp")
       .where({ external_simulation_id: run.external_simulation_id })
       .orderBy("timestamp", "asc");
+
+    console.log(`[sim.runtime] analyze: found ${responses.length} responses for ${key}`);
 
     const responsesBlock = responses.length
       ? responses
@@ -515,6 +528,7 @@ Provide strict hiring scores (0-100) across each dimension. Return JSON, no pros
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent" +
       `?key=${encodeURIComponent(GEMINI_API_KEY)}`;
 
+    console.log(`[sim.runtime] analyze: calling Gemini for ${key}`);
     const aiResponse = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -530,6 +544,7 @@ Provide strict hiring scores (0-100) across each dimension. Return JSON, no pros
 
     if (!aiResponse.ok) {
       const text = await aiResponse.text().catch(() => "");
+      console.error(`[sim.runtime] analyze: Gemini failed status=${aiResponse.status} text=${text}`);
       throw new Error(`Gemini analysis failed (${aiResponse.status}): ${text}`);
     }
 
@@ -539,12 +554,15 @@ Provide strict hiring scores (0-100) across each dimension. Return JSON, no pros
         ?.map((part) => part?.text ?? "")
         .join("")
         .trim() ?? "";
+
+    console.log(`[sim.runtime] analyze: Gemini response length=${rawReport.length}`);
     if (!rawReport) throw new Error("Gemini returned empty analysis output");
 
     let report = null;
     try {
       report = JSON.parse(rawReport);
     } catch (err) {
+      console.error(`[sim.runtime] analyze: JSON parse failed. Raw: ${rawReport.slice(0, 500)}...`);
       throw new Error(`Failed to parse analysis JSON: ${err?.message || err}`);
     }
 
@@ -571,6 +589,7 @@ Provide strict hiring scores (0-100) across each dimension. Return JSON, no pros
         updated_at: db.fn.now(),
       });
 
+    console.log(`[sim.runtime] analyze: success for ${key} in ${Date.now() - start}ms`);
     return res.json({ report: sanitizedReport, analysis_generated_at: generatedAt });
   } catch (err) {
     console.error("[sim.runtime] analyze_failed", err);
