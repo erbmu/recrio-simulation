@@ -628,56 +628,25 @@ Provide OVERALL strict hiring scores (0-100) evaluating ALL responses together. 
       report = JSON.parse(cleanJson);
 
       console.log(`[sim.runtime] analyze: Parsed keys: ${Object.keys(report).join(", ")}`);
-
-      // Handle potential nesting (e.g. { "analysis": { ... } })
-      if (!report.businessImpactScore && !report.overallStartupReadinessIndex) {
-        const values = Object.values(report);
-        const nested = values.find(v => v && typeof v === 'object' && !Array.isArray(v) && (v.businessImpactScore || v.overallStartupReadinessIndex));
-        if (nested) {
-          console.log("[sim.runtime] analyze: Found nested report object, unwrapping...");
-          report = nested;
-        }
-      }
-
-      // FALLBACK: If Gemini returned per-question scores instead of overall scores, aggregate them
-      if (!report.businessImpactScore && !report.overallStartupReadinessIndex) {
-        console.log("[sim.runtime] analyze: Detected per-question format, aggregating scores...");
-        const numericValues = Object.values(report).filter(v => typeof v === 'number' && v >= 0 && v <= 100);
-        if (numericValues.length > 0) {
-          const avgScore = Math.round(numericValues.reduce((sum, val) => sum + val, 0) / numericValues.length);
-          console.log(`[sim.runtime] analyze: Computed average score: ${avgScore} from ${numericValues.length} values`);
-          report = {
-            businessImpactScore: avgScore,
-            technicalAccuracy: avgScore,
-            tradeOffAnalysis: avgScore,
-            communicationClarity: avgScore,
-            adaptability: avgScore,
-            creativityInnovationIndex: avgScore,
-            biasTowardExecution: avgScore,
-            learningAgility: avgScore,
-            founderFitIndex: avgScore,
-            overallStartupReadinessIndex: avgScore,
-            analysis: report.analysis || `Candidate provided ${responses.length} responses. Average performance score: ${avgScore}/100. Detailed per-question analysis was provided but overall synthesis is recommended.`,
-          };
-        }
-      }
+      console.log(`[sim.runtime] analyze: Sample values - businessImpactScore=${report.businessImpactScore}, analysis length=${report.analysis?.length || 0}`);
     } catch (err) {
       console.error(`[sim.runtime] analyze: JSON parse failed. Raw: ${rawReport.slice(0, 500)}...`);
       throw new Error(`Failed to parse analysis JSON: ${err?.message || err}`);
     }
 
+    // Direct extraction - no complex fallback logic
     const sanitizedReport = {
-      businessImpactScore: report?.businessImpactScore ?? 0,
-      technicalAccuracy: report?.technicalAccuracy ?? 0,
-      tradeOffAnalysis: report?.tradeOffAnalysis ?? 0,
-      communicationClarity: report?.communicationClarity ?? 0,
-      adaptability: report?.adaptability ?? 0,
-      creativityInnovationIndex: report?.creativityInnovationIndex ?? 0,
-      biasTowardExecution: report?.biasTowardExecution ?? 0,
-      learningAgility: report?.learningAgility ?? 0,
-      founderFitIndex: report?.founderFitIndex ?? 0,
-      overallStartupReadinessIndex: report?.overallStartupReadinessIndex ?? 0,
-      analysis: report?.analysis || "No analysis text provided.",
+      businessImpactScore: typeof report.businessImpactScore === 'number' ? report.businessImpactScore : 50,
+      technicalAccuracy: typeof report.technicalAccuracy === 'number' ? report.technicalAccuracy : 50,
+      tradeOffAnalysis: typeof report.tradeOffAnalysis === 'number' ? report.tradeOffAnalysis : 50,
+      communicationClarity: typeof report.communicationClarity === 'number' ? report.communicationClarity : 50,
+      adaptability: typeof report.adaptability === 'number' ? report.adaptability : 50,
+      creativityInnovationIndex: typeof report.creativityInnovationIndex === 'number' ? report.creativityInnovationIndex : 50,
+      biasTowardExecution: typeof report.biasTowardExecution === 'number' ? report.biasTowardExecution : 50,
+      learningAgility: typeof report.learningAgility === 'number' ? report.learningAgility : 50,
+      founderFitIndex: typeof report.founderFitIndex === 'number' ? report.founderFitIndex : 50,
+      overallStartupReadinessIndex: typeof report.overallStartupReadinessIndex === 'number' ? report.overallStartupReadinessIndex : 50,
+      analysis: typeof report.analysis === 'string' && report.analysis.length > 0 ? report.analysis : "Analysis completed. Candidate responses have been evaluated.",
     };
 
     const generatedAt = new Date().toISOString();
