@@ -547,6 +547,12 @@ async function analyzeHandler(req, res) {
     const systemPrompt = `You are an exceptionally strict expert evaluator for top-tier startup founders and early-stage employees.
 Your standards are extremely high—you evaluate candidates as if they are applying to YC, Sequoia, or FAANG.
 
+CRITICAL INSTRUCTIONS:
+1. You MUST provide OVERALL scores across ALL responses, NOT per-question scores
+2. Evaluate the candidate's ENTIRE performance holistically
+3. Return EXACTLY the JSON structure specified below, nothing else
+4. Do NOT create keys like "q1", "q2", etc. - only use the exact field names shown
+
 EVALUATION PHILOSOPHY:
 - Be HIGHLY CRITICAL and set the bar very high
 - Scores above 80 should be reserved ONLY for exceptional, standout responses
@@ -554,15 +560,32 @@ EVALUATION PHILOSOPHY:
 - Weak responses should score below 40
 - Look for depth of reasoning, not just surface-level answers
 - Penalize vague, generic, or unactionable responses heavily
-- Reward specific, data-driven, innovative thinking with concrete execution plans`;
+- Reward specific, data-driven, innovative thinking with concrete execution plans
 
-    const userPrompt = `SCENARIO CONTEXT:
+YOU MUST RETURN THIS EXACT JSON STRUCTURE (use these exact field names):
+{
+  "businessImpactScore": <number 0-100>,
+  "technicalAccuracy": <number 0-100>,
+  "tradeOffAnalysis": <number 0-100>,
+  "communicationClarity": <number 0-100>,
+  "adaptability": <number 0-100>,
+  "creativityInnovationIndex": <number 0-100>,
+  "biasTowardExecution": <number 0-100>,
+  "learningAgility": <number 0-100>,
+  "founderFitIndex": <number 0-100>,
+  "overallStartupReadinessIndex": <number 0-100>,
+  "analysis": "<string: detailed 2-3 paragraph summary>"
+}`;
+
+    const userPrompt = `Evaluate this candidate's OVERALL performance across ALL their responses.
+
+SCENARIO CONTEXT:
 ${scenarioBlock}
 
 CANDIDATE RESPONSES:
 ${responsesBlock}
 
-Provide strict hiring scores (0-100) across each dimension. Return JSON, no prose.`;
+Provide OVERALL strict hiring scores (0-100) evaluating ALL responses together. Return ONLY the JSON structure specified above.`;
 
     const url =
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent" +
@@ -613,6 +636,29 @@ Provide strict hiring scores (0-100) across each dimension. Return JSON, no pros
         if (nested) {
           console.log("[sim.runtime] analyze: Found nested report object, unwrapping...");
           report = nested;
+        }
+      }
+
+      // FALLBACK: If Gemini returned per-question scores instead of overall scores, aggregate them
+      if (!report.businessImpactScore && !report.overallStartupReadinessIndex) {
+        console.log("[sim.runtime] analyze: Detected per-question format, aggregating scores...");
+        const numericValues = Object.values(report).filter(v => typeof v === 'number' && v >= 0 && v <= 100);
+        if (numericValues.length > 0) {
+          const avgScore = Math.round(numericValues.reduce((sum, val) => sum + val, 0) / numericValues.length);
+          console.log(`[sim.runtime] analyze: Computed average score: ${avgScore} from ${numericValues.length} values`);
+          report = {
+            businessImpactScore: avgScore,
+            technicalAccuracy: avgScore,
+            tradeOffAnalysis: avgScore,
+            communicationClarity: avgScore,
+            adaptability: avgScore,
+            creativityInnovationIndex: avgScore,
+            biasTowardExecution: avgScore,
+            learningAgility: avgScore,
+            founderFitIndex: avgScore,
+            overallStartupReadinessIndex: avgScore,
+            analysis: report.analysis || `Candidate provided ${responses.length} responses. Average performance score: ${avgScore}/100. Detailed per-question analysis was provided but overall synthesis is recommended.`,
+          };
         }
       }
     } catch (err) {
