@@ -416,6 +416,14 @@ export default function SimSession() {
           return;
         }
 
+        console.log("[SimSession] Resolve response received:", {
+          hasJob: !!body.job,
+          hasOrg: !!body.org,
+          jobDescription: body.job?.description?.slice(0, 50),
+          orgCompanyDescription: body.org?.company_description?.slice(0, 50),
+          fullBody: body
+        });
+
         if (isMounted) {
           setSession(body);
           const extId =
