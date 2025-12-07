@@ -31,7 +31,7 @@ const buildResolveQuery = (trx) =>
       "j.title as job_title",
       "j.description as job_description",
       "j.qualifications",
-      "o.company_description"
+      trx.raw("COALESCE(j.company_description, o.company_description) as company_description")
     );
 
 function sign(payload) {
