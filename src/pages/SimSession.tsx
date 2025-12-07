@@ -555,10 +555,18 @@ export default function SimSession() {
 
     setScenarioLoading(true);
     try {
-      const rawScenario = await fetchScenario(
-        sessionData.job?.description ?? "",
-        sessionData.org?.company_description ?? "",
-      );
+      const jobDesc = sessionData.job?.description ?? "";
+      const companyDesc = sessionData.org?.company_description ?? "";
+
+      console.log("[SimSession] Scenario generation inputs:", {
+        jobDescLength: jobDesc.length,
+        companyDescLength: companyDesc.length,
+        jobDescPreview: jobDesc.slice(0, 50),
+        companyDescPreview: companyDesc.slice(0, 50),
+        fullSessionData: sessionData
+      });
+
+      const rawScenario = await fetchScenario(jobDesc, companyDesc);
 
       if (!isValidScenario(rawScenario)) {
         throw new Error("Simulation generator returned an unexpected response.");
