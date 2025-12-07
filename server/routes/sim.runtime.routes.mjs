@@ -309,16 +309,17 @@ async function scenarioHandler(req, res) {
     const systemPrompt = `You are an AI that generates realistic workplace simulation scenarios for hiring assessments.
 The simulation should:
 1) 3 channels total;
-2) Each channel has exactly 6 questions total (e.g., 3 main + 2 follow-ups each);
+2) Each channel has EXACTLY 3 questions total (1 main question + 2 follow-ups);
 3) Include realistic team dialogue BEFORE each main question (2–3 short messages);
 4) Distinct AI personas (Founder, Lead Engineer, PM, Designer, etc.);
 5) Startup-feel authenticity;
 6) 30–40% of questions include realistic stimulus (code/document/data) when referenced.
 
-CRITICAL INSTRUCTION:
+CRITICAL INSTRUCTIONS:
 - The scenario MUST be deeply customized to the specific Job Description and Company Description provided.
 - Do NOT use generic questions. Every question should feel like it could only be asked at THIS company for THIS role.
 - Reference specific technologies, responsibilities, or company values mentioned in the descriptions.
+- TOTAL: 9 questions across 3 channels (3 per channel)
 
 RULE: If any question text references external material, you MUST include that exact material in the "stimulus" object.
 

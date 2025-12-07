@@ -358,7 +358,7 @@ export default function SimSession() {
     setError("");
     setSession(null);
 
-  const fetchSession = async () => {
+    const fetchSession = async () => {
       try {
         const path = token
           ? `resolve/${encodeURIComponent(token)}?stage=preview`
@@ -398,8 +398,8 @@ export default function SimSession() {
             used
               ? USED_LINK_MESSAGE
               : body?.error ||
-                rawText ||
-                `Failed to load simulation (${response.status})`;
+              rawText ||
+              `Failed to load simulation (${response.status})`;
           setError(msg);
           setLoading(false);
           return;
@@ -416,8 +416,8 @@ export default function SimSession() {
           return;
         }
 
-       if (isMounted) {
-         setSession(body);
+        if (isMounted) {
+          setSession(body);
           const extId =
             (body as Record<string, unknown>)?.simulationId ??
             (body as Record<string, unknown>)?.simulation_id ??
@@ -440,10 +440,10 @@ export default function SimSession() {
     };
   }, [token, payload]);
 
-const scenarioKey = useMemo(
-  () => simulationId ?? String(session?.application?.id ?? token ?? payload ?? "public"),
-  [simulationId, session?.application?.id, token, payload],
-);
+  const scenarioKey = useMemo(
+    () => simulationId ?? String(session?.application?.id ?? token ?? payload ?? "public"),
+    [simulationId, session?.application?.id, token, payload],
+  );
 
   const getNextChannelId = useCallback(
     (currentId: string) => {
@@ -819,8 +819,8 @@ const scenarioKey = useMemo(
       }));
 
       const completionText = nextChannelId
-        ? "🎉 Escalation resolved! Great work. Please proceed to the next channel."
-        : "🎉 Escalation resolved! This simulation is complete. You're all done.";
+        ? "✅ Great work! You've completed this section. Let's move on to the next one!"
+        : "🎉 Congratulations! You've completed the simulation. Please click Submit when you're ready.";
 
       const completionMessage: Message = {
         id: `${activeChannel}-completion`,
