@@ -313,15 +313,28 @@ The simulation should:
 3) Include realistic team dialogue BEFORE each main question (2–3 short messages);
 4) Distinct AI personas (Founder, Lead Engineer, PM, Designer, etc.);
 5) Startup-feel authenticity;
-6) 30–40% of questions include realistic stimulus (code/document/data) when referenced.
+6) AT LEAST ONE question MUST include a "stimulus" object with realistic reference material.
 
 CRITICAL INSTRUCTIONS:
 - The scenario MUST be deeply customized to the specific Job Description and Company Description provided.
 - Do NOT use generic questions. Every question should feel like it could only be asked at THIS company for THIS role.
 - Reference specific technologies, responsibilities, or company values mentioned in the descriptions.
 - TOTAL: 9 questions across 3 channels (3 per channel)
+- REQUIRED: At least 1 question must have a stimulus object (aim for 30-40% of questions)
 
-RULE: If any question text references external material, you MUST include that exact material in the "stimulus" object.
+STIMULUS TYPES (use when a question references external material):
+- "code": Code snippets, API responses, logs, configuration files
+- "document": Product specs, requirements, reports, proposals
+- "table": Data tables, metrics, analytics
+- "json": API payloads, configuration objects, structured data
+- "spreadsheet": Financial data, user data, performance metrics
+
+RULE: If any question text references external material (e.g., "review this code", "analyze this data", "look at these metrics"), you MUST include that exact material in a "stimulus" object with:
+{
+  "title": "descriptive title",
+  "type": "code|document|table|json|spreadsheet",
+  "content": "the actual material as a string"
+}
 
 REQUIRED JSON STRUCTURE:
 {
@@ -333,7 +346,8 @@ REQUIRED JSON STRUCTURE:
       "channel": "channel-id-match",
       "mainQuestion": "...",
       "context": [{ "agent": "...", "message": "..." }],
-      "followUps": [{ "id": "...", "agent": "...", "question": "..." }]
+      "followUps": [{ "id": "...", "agent": "...", "question": "..." }],
+      "stimulus": { "title": "...", "type": "...", "content": "..." }  // OPTIONAL but at least 1 question must have this
     }
   ]
 }
