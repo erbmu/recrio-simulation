@@ -650,7 +650,7 @@ Provide OVERALL strict hiring scores (0-100) evaluating ALL responses together. 
     }
 
     // Direct extraction - no complex fallback logic
-    const sanitizedReport = {
+    const rawScores = {
       businessImpactScore: typeof report.businessImpactScore === 'number' ? report.businessImpactScore : 50,
       technicalAccuracy: typeof report.technicalAccuracy === 'number' ? report.technicalAccuracy : 50,
       tradeOffAnalysis: typeof report.tradeOffAnalysis === 'number' ? report.tradeOffAnalysis : 50,
@@ -662,6 +662,44 @@ Provide OVERALL strict hiring scores (0-100) evaluating ALL responses together. 
       founderFitIndex: typeof report.founderFitIndex === 'number' ? report.founderFitIndex : 50,
       overallStartupReadinessIndex: typeof report.overallStartupReadinessIndex === 'number' ? report.overallStartupReadinessIndex : 50,
       analysis: typeof report.analysis === 'string' && report.analysis.length > 0 ? report.analysis : "Analysis completed. Candidate responses have been evaluated.",
+    };
+
+    // Calculate completion penalty
+    const TOTAL_QUESTIONS = 9; // 3 channels × 3 questions each
+    const answeredCount = responses.length;
+    const completionRate = answeredCount / TOTAL_QUESTIONS;
+
+    // Completion multiplier based on how many questions were answered
+    let completionMultiplier = 1.0;
+    if (completionRate >= 1.0) {
+      completionMultiplier = 1.0; // 100% completion: no penalty
+    } else if (completionRate >= 0.67) {
+      completionMultiplier = 0.85; // 67-99% completion: 15% penalty
+    } else if (completionRate >= 0.34) {
+      completionMultiplier = 0.65; // 34-66% completion: 35% penalty
+    } else if (completionRate > 0) {
+      completionMultiplier = 0.40; // 1-33% completion: 60% penalty
+    } else {
+      completionMultiplier = 0.0; // 0% completion: automatic zero
+    }
+
+    console.log(`[sim.runtime] analyze: completion ${answeredCount}/${TOTAL_QUESTIONS} (${Math.round(completionRate * 100)}%) - multiplier: ${completionMultiplier}`);
+
+    // Apply completion penalty to all numeric scores
+    const sanitizedReport = {
+      businessImpactScore: Math.round(rawScores.businessImpactScore * completionMultiplier),
+      technicalAccuracy: Math.round(rawScores.technicalAccuracy * completionMultiplier),
+      tradeOffAnalysis: Math.round(rawScores.tradeOffAnalysis * completionMultiplier),
+      communicationClarity: Math.round(rawScores.communicationClarity * completionMultiplier),
+      adaptability: Math.round(rawScores.adaptability * completionMultiplier),
+      creativityInnovationIndex: Math.round(rawScores.creativityInnovationIndex * completionMultiplier),
+      biasTowardExecution: Math.round(rawScores.biasTowardExecution * completionMultiplier),
+      learningAgility: Math.round(rawScores.learningAgility * completionMultiplier),
+      founderFitIndex: Math.round(rawScores.founderFitIndex * completionMultiplier),
+      overallStartupReadinessIndex: Math.round(rawScores.overallStartupReadinessIndex * completionMultiplier),
+      analysis: completionRate < 1.0
+        ? `${rawScores.analysis}\n\n⚠️ Note: Candidate completed ${answeredCount} of ${TOTAL_QUESTIONS} questions (${Math.round(completionRate * 100)}%). Scores have been adjusted to reflect incomplete submission.`
+        : rawScores.analysis,
     };
 
     const generatedAt = new Date().toISOString();
