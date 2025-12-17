@@ -37,8 +37,8 @@ export const Sidebar = ({
         <p className="text-xs text-white/60 mt-1 uppercase tracking-wider">Simulation</p>
       </div>
 
-      {/* Timer & Violations */}
-      <div className="px-4 py-3 space-y-2 border-b border-white/10">
+      {/* Timer & Violations (sticky + z-index to keep visible on zoom/overlap) */}
+      <div className="sticky top-0 z-30 px-4 py-3 space-y-2 border-b border-white/10 bg-recrio-sidebar">
         <div className="flex items-center gap-2 text-sm">
           <Clock className="w-4 h-4 text-accent" />
           <span className="text-white/80">Time Remaining</span>
